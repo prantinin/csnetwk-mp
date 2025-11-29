@@ -25,13 +25,14 @@ class GamePhase(Enum):
 
 # CLASSES
 class BattleState:
-    def __init__(self, is_host, seed):
+    def __init__(self, is_host, seed, verbose=False):
         #status
         self.is_host = is_host # boolean true/false
         self.seed = seed
         self.current_phase = GamePhase.WAITING_FOR_MOVE #after BATTLE_SETUP, transition to this
         self.my_turn = is_host # host peer first
         self.sequence_number = 0
+        self.verbose = verbose
 
         #pokemon stats
         self.my_pokemon = None 
@@ -49,15 +50,22 @@ class BattleState:
 
     #! SETUP
 
+    #for verbose mode or debugging
+    def log(self, *args):
+        if self.verbose:
+            print("[BattleState]", *args)
+
     #pokemon stats
     #call this after BATTLE_SETUP exchange is sent
     def set_pokemon_data(self, my_pokemon: dict, opponent_pokemon: dict):
         self.my_pokemon = my_pokemon
         self.opponent_pokemon = opponent_pokemon
+        self.log("Pokemon data set: Mine HP:", my_pokemon.get('hp'), "Opponent HP:", opponent_pokemon.get('hp'))
     
     #generate next sequence number
     def next_sequence_number(self) -> int:
         self.sequence_number += 1
+        self.log("Next sequence number:", self.sequence_number)
         return self.sequence_number
     
 
@@ -66,22 +74,29 @@ class BattleState:
 
     #check if attacking is allowed
     def can_attack(self) -> bool:
-        return self.my_turn and self.current_phase == GamePhase.WAITING_FOR_MOVE
+        allowed = self.my_turn and self.current_phase == GamePhase.WAITING_FOR_MOVE
+        self.log("Can attack:", allowed)
+        return allowed
     
     #check if defending is allowed
     def can_defend(self) -> bool:
-        return (not self.my_turn) and self.current_phase == GamePhase.WAITING_FOR_MOVE
+        allowed = (not self.my_turn) and self.current_phase == GamePhase.WAITING_FOR_MOVE
+        self.log("Can defend:", allowed)
+        return allowed
     
     #check whether to accept the attack
     def receive_attack_announce(self, attack_data) -> bool:
         if self.can_defend():
             self.last_attack = attack_data #store attack data for calculation
+            self.log("Received attack announce:", attack_data)
             return True #attack was received
+        self.log("Rejected attack announce (not in correct state)")
         return False #attack not accepted
     
     #transition to PROCESSING_TURN after doing defense (both players)
     def receive_defense_announce(self):
         if self.current_phase == GamePhase.WAITING_FOR_MOVE:
+            self.log("Received defense announce. Moving to PROCESSING_TURN")
             self.current_phase = GamePhase.PROCESSING_TURN
 
 
@@ -98,6 +113,7 @@ class BattleState:
         if self.my_pokemon is not None:
             self.my_pokemon['hp'] = my_remaining_hp #update in view
 
+        self.log("Recorded local calculation. My HP:", my_remaining_hp)
         self.check_game_over() #check if its over
 
     #store result if opponent hp
@@ -110,20 +126,24 @@ class BattleState:
         if self.opponent_pokemon is not None:
             self.opponent_pokemon['hp'] = opponent_hp #update in view
 
+        self.log("Received opponent calculation. Opponent HP:", opponent_hp)
         self.check_game_over() #check if its over
 
     #check if calculation is confirmed
     def send_calculation_confirm(self):
         self.local_confirm_sent = True 
+        self.log("Sent calculation confirm.")
 
     def receive_calculation_confirm(self):
         self.opponent_confirm_received = True
+        self.log("Received opponent calculation confirm.")
 
     #check if both players confirmed calculations, if true, switch turns
     def both_confirmed(self) -> bool:
         if self.is_game_over():
             return True # already game over so no need to switch
         if self.local_confirm_sent and self.opponent_confirm_received:
+            self.log("Both players confirmed calculations. Switching turn.")
             self.switch_turn()
             return True
         return False
@@ -138,6 +158,7 @@ class BattleState:
         self.local_confirm_sent = False
         self.opponent_confirm_received = False
         
+        self.log("Switched turn. My turn:", self.my_turn)
         # after switching, check if battle ended
         self.check_game_over()
 
@@ -150,13 +171,18 @@ class BattleState:
         if self.my_pokemon and self.my_pokemon.get('hp', 1) <= 0:
             self.current_phase = GamePhase.GAME_OVER
             self.winner = "opponent"
+            self.log("Game over. Winner: opponent")
             return True
         if self.opponent_pokemon and self.opponent_pokemon.get('hp', 1) <= 0:
             self.current_phase = GamePhase.GAME_OVER
             self.winner = "me"
+            self.log("Game over. Winner: me")
             return True
         return False
     
     #check if game is over
     def is_game_over(self) -> bool:
-        return self.current_phase == GamePhase.GAME_OVER
+        over = self.current_phase == GamePhase.GAME_OVER
+        if over:
+            self.log("Game is over.")
+        return over
