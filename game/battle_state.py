@@ -8,12 +8,6 @@ manage battle state, turn order, and phase transitions
 5.1 Reliability Layer
 5.2.3 Discrepancy Resolution
 5.2.4 Chat Functionality
-
-ATTACK_ANNOUNCE -> allow sending only if it's the attacker's turn and phase is WAITING_FOR_MOVE
-DEFENSE_ANNOUNCE -> move to CALCULATION phase after receiving this
-CALCULATION_REPORT -> wait for both sides' reports, update HP, check for win
-CALCULATION_CONFIRM -> Once both sides confirm, move to next turn
-GAME_OVER -> if HP <= 0, create and send this message
 """
 
 # GLOBAL VARIABLES AND CONSTANTS
