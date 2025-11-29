@@ -1,32 +1,162 @@
-# turn order logic, game state tracking
+# imports
+from enum import Enum
 
-    """_summary_
-    ATTACK_ANNOUNCE -> allow sending only if it's the attacker's turn and phase is WAITING_FOR_ATTACK
-    DEFENSE_ANNOUNCE -> move to CALCULATION phase after receiving this
-    CALCULATION_REPORT -> wait for both sides' reports, update HP, check for win
-    CALCULATION_CONFIRM -> Once both sides confirm, move to next turn
-    GAME_OVER -> if HP <= 0, create and send this message
-    """
+"""
+manage battle state, turn order, and phase transitions
 
-# SETUP (Initial State)
-    #host and joiner peers connect via handshake
-    #host sends HANDSHAKE_RESPONSE with seed, both peers use this seed for the random num generator (for their stats)
-    #both player peers send BATTLE_SETUP with chosen pokemon data and desired communication_mode
-    #after exchanging BATTLE_SETUP, each transitions to WAITING_FOR_MOVE
-    #spectators upon connecting receive all messages but do not take turns
+#! NOT IMPLEMENTED HERE THATS IN SECTION 5:
+5.1 Reliability Layer
+5.2.3 Discrepancy Resolution
+5.2.4 Chat Functionality
 
-# WAITING_FOR_MOVE (Turn-based State)
-    #host peer first, acting peer sends ATTACK_ANNOUNCE with new sequence number
-    #defending peer wait for ATTACK_ANNOUNCE, after receiving, defender sends DEFENSE_ANNOUNCE with signal ready for next phase
-    # receiving DEFENSE_ANNOUNCE, both players independently apply damage and transition to PROCESSING_TURN
+ATTACK_ANNOUNCE -> allow sending only if it's the attacker's turn and phase is WAITING_FOR_MOVE
+DEFENSE_ANNOUNCE -> move to CALCULATION phase after receiving this
+CALCULATION_REPORT -> wait for both sides' reports, update HP, check for win
+CALCULATION_CONFIRM -> Once both sides confirm, move to next turn
+GAME_OVER -> if HP <= 0, create and send this message
+"""
 
-# PROCESSING_TURN (Turn processing State)
-    #each player performs damage calculation using attack and defense stats based on damage_category
-    #each player sends CALCULATION_REPORT with new sequence number to other player -> ACKs as checksum
-    # insert discrepancy resolution (not my part)
+# GLOBAL VARIABLES AND CONSTANTS
+class GamePhase(Enum):
+    WAITING_FOR_MOVE = "WAITING_FOR_MOVE"
+    PROCESSING_TURN = "PROCESSING_TURN"
+    GAME_OVER = "GAME_OVER"
 
-# GAME_OVER (Final State)
-    # when pokemon HP drops to zero or below, peer whose opponent has fainted sends GAME_OVER
-    # message also requires sequence number and acknowledgment
-    # receiving this message, battle ends
 
+# CLASSES
+class BattleState:
+    def __init__(self, is_host, seed):
+        #status
+        self.is_host = is_host # boolean true/false
+        self.seed = seed
+        self.current_phase = GamePhase.WAITING_FOR_MOVE #after BATTLE_SETUP, transition to this
+        self.my_turn = is_host # host peer first
+        self.sequence_number = 0
+
+        #pokemon stats
+        self.my_pokemon = None 
+        self.opponent_pokemon = None
+
+        #game state
+        self.last_attack = None                     # attack data received
+        self.local_calculation = None               # 'hp': int, 'sequence': int
+        self.opponent_calculation = None            # opponent's report ^
+        self.local_confirm_sent = False             # did we confirm?
+        self.opponent_confirm_received = False      # did opponent confirm?
+        self.winner = None                          # "me" or "opponent" or None
+
+
+
+    #! SETUP
+
+    #pokemon stats
+    #call this after BATTLE_SETUP exchange is sent
+    def set_pokemon_data(self, my_pokemon: dict, opponent_pokemon: dict):
+        self.my_pokemon = my_pokemon
+        self.opponent_pokemon = opponent_pokemon
+    
+    #generate next sequence number
+    def next_sequence_number(self) -> int:
+        self.sequence_number += 1
+        return self.sequence_number
+    
+
+    
+    #! WAITING_FOR_MOVE
+
+    #check if attacking is allowed
+    def can_attack(self) -> bool:
+        return self.my_turn and self.current_phase == GamePhase.WAITING_FOR_MOVE
+    
+    #check if defending is allowed
+    def can_defend(self) -> bool:
+        return (not self.my_turn) and self.current_phase == GamePhase.WAITING_FOR_MOVE
+    
+    #check whether to accept the attack
+    def receive_attack_announce(self, attack_data) -> bool:
+        if self.can_defend():
+            self.last_attack = attack_data #store attack data for calculation
+            return True #attack was received
+        return False #attack not accepted
+    
+    #transition to PROCESSING_TURN after doing defense (both players)
+    def receive_defense_announce(self):
+        if self.current_phase == GamePhase.WAITING_FOR_MOVE:
+            self.current_phase = GamePhase.PROCESSING_TURN
+
+
+
+    #! PROCESSING_TURN
+
+    #store local result of own pokemon hp after damage
+    def record_local_calculation(self, my_remaining_hp: int):
+        self.local_calculation = {
+            'hp': my_remaining_hp,
+            'sequence': self.sequence_number # or change if separate tracking is needed
+        }
+
+        if self.my_pokemon is not None:
+            self.my_pokemon['hp'] = my_remaining_hp #update in view
+
+        self.check_game_over() #check if its over
+
+    #store result if opponent hp
+    def receive_calculation_report(self, opponent_hp: int, opponent_seq: int):
+        self.opponent_calculation = { #store opponent's calculation report
+            'hp' : opponent_hp,
+            'sequence' : opponent_seq
+        }
+
+        if self.opponent_pokemon is not None:
+            self.opponent_pokemon['hp'] = opponent_hp #update in view
+
+        self.check_game_over() #check if its over
+
+    #check if calculation is confirmed
+    def send_calculation_confirm(self):
+        self.local_confirm_sent = True 
+
+    def receive_calculation_confirm(self):
+        self.opponent_confirm_received = True
+
+    #check if both players confirmed calculations, if true, switch turns
+    def both_confirmed(self) -> bool:
+        if self.is_game_over():
+            return True # already game over so no need to switch
+        if self.local_confirm_sent and self.opponent_confirm_received:
+            self.switch_turn()
+            return True
+        return False
+
+    def switch_turn(self):
+        # clear status every turn
+        self.my_turn = not self.my_turn
+        self.current_phase = GamePhase.WAITING_FOR_MOVE
+        self.last_attack = None
+        self.local_calculation = None
+        self.opponent_calculation = None
+        self.local_confirm_sent = False
+        self.opponent_confirm_received = False
+        
+        # after switching, check if battle ended
+        self.check_game_over()
+
+
+
+    #! GAME_OVER
+
+    #check if game should end
+    def check_game_over(self) -> bool:
+        if self.my_pokemon and self.my_pokemon.get('hp', 1) <= 0:
+            self.current_phase = GamePhase.GAME_OVER
+            self.winner = "opponent"
+            return True
+        if self.opponent_pokemon and self.opponent_pokemon.get('hp', 1) <= 0:
+            self.current_phase = GamePhase.GAME_OVER
+            self.winner = "me"
+            return True
+        return False
+    
+    #check if game is over
+    def is_game_over(self) -> bool:
+        return self.current_phase == GamePhase.GAME_OVER
