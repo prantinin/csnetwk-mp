@@ -47,7 +47,8 @@ class BattleState:
     #for verbose mode or debugging
     def log(self, *args):
         if self.verbose:
-            print("[BattleState]", *args)
+            role = "HOST" if self.is_host else "JOINER"
+            print(f"[DBUG:{role}]", *args)
 
     #pokemon stats
     #call this after BATTLE_SETUP exchange is sent
