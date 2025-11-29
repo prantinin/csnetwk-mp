@@ -1,4 +1,4 @@
-from battle_state import BattleState, GamePhase
+from game.battle_state import BattleState, GamePhase
 
 def test_basic_flow():
     print("=== Testing Basic Battle Flow ===\n")
@@ -74,7 +74,7 @@ def test_game_over():
     assert joiner.is_game_over() == True
     assert joiner.winner == "opponent"
     
-    print("\n✅ Game over test passed!")
+    print("\n Game over test passed!")
 
 if __name__ == "__main__":
     test_basic_flow()
