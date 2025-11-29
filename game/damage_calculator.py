@@ -1,0 +1,1 @@
+# damage formulas and win/loss check
