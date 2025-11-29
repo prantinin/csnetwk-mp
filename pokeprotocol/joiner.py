@@ -1,27 +1,34 @@
 import socket
 
-HOST = "127.0.0.1"
-PORT = 5005
+HOST = "127.0.0.1"  # Host IP address
+PORT = 65432        # Port used by host
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+message_type = ""
+divider = "=====================================\n\n"
 
-# Send handshake request
-request = "message_type: HANDSHAKE_REQUEST"
-sock.sendto(request.encode(), (HOST, PORT))
-print("[JOINER] Sent HANDSHAKE_REQUEST")
+def joiner_handshake():
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        
+        # Joiner connects to host
+        print(f"[JOINER] Connected to host at {HOST}:{PORT}")
+        print(f"[JOINER] Sending handshake request...\n")
 
-# Wait for response
-data, addr = sock.recvfrom(1024)
-response = data.decode()
+        # Sending handshake request to host
+        message_type = "HANDSHAKE_REQUEST"
+        s.sendto(message_type.encode(), (HOST, PORT))
 
-print("[JOINER] Received:\n" + response)
+        data, addr = s.recvfrom(1024)
+        host_response = data.decode()
+        host_msg, seed = host_response.split("; ")
 
-# Parse the seed
-lines = response.split("\n")
-message_type = lines[0].split(": ")[1]
-seed = int(lines[1].split(": ")[1])
+        # Host handshake response handling
+        if host_msg == "HANDSHAKE_RESPONSE":
+            print(f"[JOINER] Handshake with host complete!\n")
+            print(f"[JOINER] message_type: {host_msg}")
+            print(f"[JOINER] seed: {seed}\n")
+            print(divider)
+        else:
+            print(f"[JOINER] Unexpected message type: {host_msg}")
 
-if message_type == "HANDSHAKE_RESPONSE":
-    print(f"[JOINER] Handshake successful! Received seed = {seed}")
-else:
-    print("[JOINER] Invalid handshake response")
+
+joiner_handshake()

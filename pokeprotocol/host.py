@@ -1,30 +1,39 @@
 import socket
 import random
 
-HOST = "127.0.0.1"
-PORT = 5005
+HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
+PORT = 65432        # Port to listen on (non-privileged ports are > 1023)
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind((HOST, PORT))
+message_type = ""
+divider = "=====================================\n\n"
 
-print(f"[HOST] Listening on {HOST}:{PORT}")
+def init():
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.bind((HOST, PORT))
+        
+        # Host handshake initiation
+        print(f"[HOST] Host listening on {HOST}:{PORT}...")
+        print(f"[HOST] Awaiting handshake...\n")
 
-while True:
-    data, addr = sock.recvfrom(1024)
-    message = data.decode().strip()
+        # Receives data from client until termination via empty bytes object b''
+        while True:
+            data, addr = s.recvfrom(1024)
+            joiner_msg = data.decode()
 
-    print(f"[HOST] Received from {addr}:\n{message}")
+            if joiner_msg == "HANDSHAKE_REQUEST":
+                print(f"[HOST] Handshake request received from {addr}")
 
-    # Check if it's a handshake request
-    if message == "message_type: HANDSHAKE_REQUEST":
-        seed = random.randint(1, 99999)
+                # Handshake response to joiner
+                message_type = "HANDSHAKE_RESPONSE"
+                seed = random.randint(0, 9999)
+                host_response = f"{message_type}; {seed}"
 
-        response = (
-            "message_type: HANDSHAKE_RESPONSE\n"
-            f"seed: {seed}"
-        )
+                s.sendto(host_response.encode(), addr)
+                print(f"[HOST] Handshake with joiner complete!\n")
+                print(divider)
 
-        sock.sendto(response.encode(), addr)
-        print(f"[HOST] Sent HANDSHAKE_RESPONSE with seed={seed} to {addr}")
+            else:
+                print(f"[HOST] Unexpected message type: {joiner_msg}")
+                break
 
-        print("\nHandshake complete. Now ready for battle setup.\n")
+init()
