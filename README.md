@@ -12,6 +12,24 @@ Peer-to-Peer Pokémon Battle Protocol (PokeProtocol) using UDP as its transport 
 - https://realpython.com/python-sockets/#echo-client-and-server
 - https://stackoverflow.com/questions/3939361 remove-specific-characters-from-a-string-in-python 
 
+## Task Implementation
+1. Aguia, Roma
+    - Damage Calculation
+    - Discrepancy Resolution
+    - Verbose Mode
+2. Chong, Kimberly
+    - Turn-Based Flow
+    - Win/Loss Condition
+    - Battle State Synchronization
+3. La Torre, Margaret
+    - Sequence Numbers & ACKs
+    - Retransmission Logic
+    - Chat Functionality Text & Stickers
+4. Santos, Francine
+    - UDP Sockets & Message Handling
+    - Handshake Process
+    - Message Serialization
+
 ## Generative AI Statement
 We acknowledge the use of ChatGPT and CoPilot in the development of this application. We have understood its purpose and assessed its correctness within the entirety of the code. The prompts used are listed below and the output from these prompts were used for the following causes:
 - Understanding how the application's output would look like
@@ -31,3 +49,4 @@ We acknowledge the use of ChatGPT and CoPilot in the development of this applica
 - Which messages do I use from the RFC
 - Do I need to add code here for their implementations or not?
 - Have I done everything (based on rubric)?
+- Can you build a debug testing case to see if the code works properly?
