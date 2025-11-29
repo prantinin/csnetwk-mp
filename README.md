@@ -24,3 +24,10 @@ We acknowledge the use of ChatGPT and CoPilot in the development of this applica
 - How to make UDP handshake protocol python
 - How to parse messages in python
 - Error checking (e.g. why am I getting this error)
+- What is the use of the random number generator (RNG)?
+- Since we’re creating a class, put it in another file like Java or same file?
+- How to do /**/ for long parts of code in Python?
+- What does def init() do? I don’t know Python syntax.
+- Which messages do I use from the RFC
+- Do I need to add code here for their implementations or not?
+- Have I done everything (based on rubric)?
