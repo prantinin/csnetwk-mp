@@ -14,8 +14,8 @@ parser = MessageParser()
 # FUNCTIONS
 
 # Initialize battle setup
-def init_battle():
-    pokemon = input("\nChoose your Pokemon: ")
+def init_battle():         
+    pokemon = input("Choose your Pokemon: ")
     s_atk = input("How much special attack boost? ")
     s_def = input("How much special defense boost? ")
 
@@ -55,7 +55,7 @@ def joiner_handshake():
                 # Battle setup initiation from host
                 print(f"Initializing battle setup...\n")
                 host_msg = parser.decode_message(data.decode())
-                print(f"\nBattle setup data received from Host:\n{host_msg}")
+                print(f"\nBattle setup data received from Host:\n{host_msg}\n")
 
                 # Sending host battle setup data
                 poke_data = init_battle()

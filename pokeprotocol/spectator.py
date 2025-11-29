@@ -9,7 +9,7 @@ divider = "=====================================\n\n"
 parser = MessageParser()
 
 
-
+# will fix spectator once host/joiner are done:D
 # FUNCTIONS
 def spectator_handshake():
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:

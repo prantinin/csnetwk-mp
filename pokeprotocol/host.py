@@ -18,11 +18,22 @@ top_divider = "================== HOST ================\n"
 
 # Initialize battle setup
 def init_battle():
+    valid_com = False
+    
+    while not valid_com:
+        comms = input("What communication mode would you like? (P2P/BROADCAST) ")
+        comms = comms.upper()
+        if comms == "P2P" or comms == "BROADCAST":
+            valid_com = True
+        else:
+            print(f"Please choose only between the two avail. modes:>") 
+            
     pokemon = input("Choose your Pokemon: ")
     s_atk = input("How much special attack boost? ")
     s_def = input("How much special defense boost? ")
 
     return parser.encode_message({
+        "comms": comms,
         "pokemon": pokemon,
         "s_atk": s_atk,
         "s_def": s_def
@@ -83,8 +94,7 @@ def init():
                     # Receiving joiner battle setup data
                     data, addr = s.recvfrom(1024)
                     joiner_msg = parser.decode_message(data.decode())
-                    print(f"Battle setup data received from Joiner:\n{joiner_msg}")
-                    print("\n")
+                    print(f"\nBattle setup data received from Joiner:\n{joiner_msg}")
                     print(divider)
 
             else:
