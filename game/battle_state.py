@@ -181,3 +181,58 @@ class BattleState:
         if over:
             self.log("Game is over.")
         return over
+
+
+
+    # --- DISCREPANCY HANDLING HELPERS ---
+
+    def has_discrepancy(self) -> bool:
+        """
+        Returns True if we have both local_calculation and opponent_calculation
+        and they do NOT match (HP or sequence).
+        """
+        if self.local_calculation is None or self.opponent_calculation is None:
+            self.log("No full calculations yet; cannot check discrepancy.")
+            return False
+
+        same_seq = self.local_calculation.get("sequence") == self.opponent_calculation.get("sequence")
+        same_hp = self.local_calculation.get("hp") == self.opponent_calculation.get("hp")
+
+        self.log(
+            "Checking discrepancy:",
+            f"local_hp={self.local_calculation.get('hp')}",
+            f"opponent_hp={self.opponent_calculation.get('hp')}",
+            f"same_seq={same_seq}",
+            f"same_hp={same_hp}",
+        )
+
+        return not (same_seq and same_hp)
+
+    def get_resolution_payload(self) -> dict:
+        """
+        Build the minimal information needed to send in a RESOLUTION_REQUEST
+        based on our local calculation.
+        """
+        if self.local_calculation is None:
+            self.log("No local calculation; cannot build resolution payload.")
+            return {}
+
+        return {
+            "remaining_health": self.local_calculation.get("hp"),
+            "sequence_number": self.local_calculation.get("sequence"),
+        }
+
+    def apply_resolved_opponent_hp(self, resolved_hp: int):
+        """
+        Called when the peers agree on a final HP for the defender after
+        discrepancy resolution.
+        """
+        if self.opponent_pokemon is not None:
+            self.opponent_pokemon["hp"] = resolved_hp
+
+        if self.opponent_calculation is None:
+            self.opponent_calculation = {}
+
+        self.opponent_calculation["hp"] = resolved_hp
+        self.log("Applied resolved opponent HP:", resolved_hp)
+        self.check_game_over()
