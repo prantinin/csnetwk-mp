@@ -50,3 +50,5 @@ We acknowledge the use of ChatGPT and CoPilot in the development of this applica
 - Do I need to add code here for their implementations or not?
 - Have I done everything (based on rubric)?
 - Can you build a debug testing case to see if the code works properly?
+- Does my code cover all that is needed from the rubric?
+- Help me test all of the parts I was assigned.
