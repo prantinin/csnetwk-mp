@@ -236,3 +236,14 @@ class BattleState:
         self.opponent_calculation["hp"] = resolved_hp
         self.log("Applied resolved opponent HP:", resolved_hp)
         self.check_game_over()
+	
+    def force_terminate_due_to_mismatch(self):
+        """
+        Terminate the battle because damage calculations could not be reconciled
+        after a RESOLUTION_REQUEST / re-evaluation.
+        """
+        self.current_phase = GamePhase.GAME_OVER
+        # we don't assign a winner here because the result is ambiguous
+        self.winner = None
+        self.log("Battle terminated due to unresolved damage discrepancy.")
+
