@@ -45,28 +45,77 @@ def start_game(socket_obj, addr, state: BattleState):
         
         # JOINER ATTACK, HOST DEFEND
         if state.my_turn:
-            print("Your turn to attack!\n")
+            
+            #! WAITING_FOR_MOVE
 
-            atk_msg = {
+            # You choosing attack move
+            # pls remember to lower() pokemon moves from cv as well
+            print(your_turn_divider)
+            move_name = input("Choose your attack move: ").lower()
+            my_move = {
                 "message_type": "ATTACK_ANNOUNCE",
-                "attack_value": attack_data,
+                "move_name": move_name,
                 "sequence_number": state.next_sequence_number()
             }
+            socket_obj.sendto(parser.encode_message(my_move).encode(), addr)
 
-            socket_obj.sendto(parser.encode_message(atk_msg).encode(), addr)
-            #state.announce_attack()
+            # Awaiting opp def announcement
+            print("\nAttack announcement sent. Awaiting defense announcement...")
 
-            print("Attack announce sent. Switching to waiting for defense...\n")
-            state.switch_turn()
+            data, __ = socket_obj.recvfrom(1024)
+            recvd_msg = parser.decode_message(data.decode())
+
+            if recvd_msg["message_type"] == "DEFENSE_ANNOUNCE":
+                state.receive_defense_announce()
+                print("Opponent defense announcement received. Beginning damage calculation...\n")
+
+
+
+                #! PROCESSING_TURN
+                # Preparing calculation report
+                remaining_health = pokemon_hp - damage
+                state.record_local_calculation(remaining_health)
+
+                # Status message following calculation confirmation
+                effect = "super effective"  # example palang
+                status_message = (f"{pokemon} used {last_attack}! It was {effect}!")
+
+                # Send calculation report
+                calcu_report = {
+                    "message_type": "CALCULATION_REPORT",
+                    "attacker": pokemon,
+                    "move_used": last_attack,
+                    "remaining_health": remaining_health,
+                    "damage_dealt": damage,             
+                    "defender_hp_remaining": defender_hp,
+                    "status_message": status_message,
+                    "sequence_number": state.next_sequence_number()
+                }
+                socket_obj.sendto(parser.encode_message(calcu_report).encode(), addr)
+                print("Calculation report sent! Checking for discrepancies...")
+
+                # Awaiting opp calculation confirmation
+                data, __ = socket_obj.recvfrom(1024)
+                recvd_msg = parser.decode_message(data.decode())
+
+                if recvd_msg["message_type"] == "CALCULATION_CONFIRMATION":
+                    #state.receive_calculation_report(
+                    #        recvd_msg.get("remaining_health"),
+                    #        recvd_msg.get("sequence_number")
+                    #    )
+                    print("All calculations similar! Turn end!")
+                    state.switch_turn()
+
+
 
 
         # JOINER DEFEND, HOST ATTACK
         else: 
 
-
             #! WAITING_FOR_MOVE
 
             # Awaiting opp attack announce
+            print(their_turn_divider)
             print("Waiting for opponent's move...\n")
 
             data, __ = socket_obj.recvfrom(1024)
@@ -129,7 +178,7 @@ def start_game(socket_obj, addr, state: BattleState):
                         print("Comparing calculation reports...")
 
                         # Comparing calculation reports
-                        confirmed_calcu = state.both_confirmed
+                        confirmed_calcu = state.both_confirmed()
 
                         if confirmed_calcu:
                             print(f"Calculation reports similar: {confirmed_calcu}")
@@ -139,6 +188,7 @@ def start_game(socket_obj, addr, state: BattleState):
                             }
                             socket_obj.sendto(parser.encode_message(confirmed_msg).encode(), addr)
                             state.switch_turn()
+                            print(f"turn: {state.my_turn}")
                         else:
                             print(f"Calculation reports similar: {confirmed_calcu}")
                             print("Sending resolution request...")
@@ -207,9 +257,7 @@ def joiner_handshake():
                 print("\nBattle setup data sent to Host. Battle initialization complete!\n\n")
 
                 # Start battle loop
-                print(their_turn_divider)
                 battle_state = BattleState(is_host=False, seed=seed, verbose=True)
-
                 start_game(s, addr, battle_state)
 
             else:
