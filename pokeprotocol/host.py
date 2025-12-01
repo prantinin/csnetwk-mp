@@ -1,4 +1,5 @@
 from networking.message_parser import MessageParser
+from game.battle_state import BattleState
 import socket
 import random
 
@@ -11,6 +12,10 @@ PORT = 65432        # Port to listen on (non-privileged ports are > 1023)
 parser = MessageParser()
 divider = "========================================\n"
 top_divider = "================== HOST ================\n"
+init_divider = "=============== INITIALIZATION ===========\n"
+battle_setup_divider = "=============== BATTLE SETUP ===========\n"
+your_turn_divider = "================== YOUR TURN ==============\n"
+their_turn_divider = "================== OPPONENT'S TURN =======\n"
 
 
 
@@ -32,12 +37,79 @@ def init_battle():
     s_atk = input("How much special attack boost? ")
     s_def = input("How much special defense boost? ")
 
-    return parser.encode_message({
+    return {
         "comms": comms,
         "pokemon": pokemon,
         "s_atk": s_atk,
         "s_def": s_def
-    })
+    }
+
+# Start Battle Loop
+def start_game(socket_obj, addr, state: BattleState):
+    
+    # dummy data while waiting for other functions
+    attack_data = 20
+    pokemon = "pikachu"
+    last_attack = "Thunderbolt"
+    pokemon_hp = 200
+    defender_hp = 200
+    damage = 20
+    
+    while not state.is_game_over():
+
+        # HOST ATTACK, JOINER DEFEND
+        if state.my_turn:
+            
+            
+
+            #! WAITING_FOR_MOVE
+
+            # You choosing attack move
+            # pls remember to lower() pokemon moves from cv as well
+            move_name = input("Choose your attack move: ").lower()
+            my_move = {
+                "message_type": "ATTACK_ANNOUNCE",
+                "move_name": move_name,
+                "sequence_number": state.next_sequence_number()
+            }
+            socket_obj.sendto(parser.encode_message(my_move).encode(), addr)
+
+            # Awaiting opp def announcement
+            print("\nAttack announcement sent. Awaiting defense announcement...")
+
+            data, __ = socket_obj.recvfrom(1024)
+            recvd_msg = parser.decode_message(data.decode())
+
+            if recvd_msg["message_type"] == "DEFENSE_ANNOUNCE":
+                state.receive_defense_announce()
+                print("Opponent defense announcement received. Beginning damage calculation...\n")
+
+
+
+                #! PROCESSING_TURN
+                # Preparing calculation report
+                remaining_health = pokemon_hp - damage
+                state.record_local_calculation(remaining_health)
+
+                # Status message following calculation confirmation
+                effect = "super effective"  # example palang
+                status_message = (f"{pokemon} used {last_attack}! It was {effect}!")
+
+                # Send calculation report
+                calcu_report = {
+                    "message_type": "CALCULATION_REPORT",
+                    "attacker": pokemon,
+                    "move_used": last_attack,
+                    "remaining_health": remaining_health,
+                    "damage_dealt": damage,             
+                    "defender_hp_remaining": defender_hp,
+                    "status_message": status_message,
+                    "sequence_number": state.next_sequence_number()
+                }
+                socket_obj.sendto(parser.encode_message(calcu_report).encode(), addr)
+        
+        else:
+            print("working...")
 
 
 # Initialize host
@@ -46,7 +118,7 @@ def init():
         s.bind((HOST, PORT))
         
         # Host handshake initiation
-        print(divider)
+        print('\n' + init_divider)
         print(f"[HOST] Host listening on {HOST}:{PORT}...")
         print(f"[HOST] Awaiting handshake...\n")
 
@@ -74,11 +146,11 @@ def init():
                 s.sendto(host_response.encode(), addr)
 
                 print(f"[HOST] seed generated: {seed}")
-                print(f"[HOST] Handshake with {role} complete!\n")
+                print(f"[HOST] Handshake with {role} complete!\n\n")
 
                 # Initialize battle if joiner connected
                 if message_type == "HANDSHAKE_REQUEST":
-                    print(top_divider)
+                    print(battle_setup_divider)
                     
                     # Battle setup initiation
                     print(f"Initializing battle setup...\n")
@@ -90,12 +162,19 @@ def init():
                         "battle_data": poke_data
                     })
                     s.sendto(host_response.encode(), addr)
+                    print("\nBattle setup data sent to Joiner. Awaiting Joiner response...\n")
 
                     # Receiving joiner battle setup data
                     data, addr = s.recvfrom(1024)
                     joiner_msg = parser.decode_message(data.decode())
-                    print(f"\nBattle setup data received from Joiner:\n{joiner_msg}")
-                    print(divider)
+                    print(f"\n\nBattle setup data received from Joiner:\n{joiner_msg}\n")
+                    print("Battle setup data exchange complete! Battle initialization complete!\n")
+
+                    # Start battle loop
+                    print(your_turn_divider)
+                    battle_state = BattleState(is_host=True, seed=seed, verbose=True)
+
+                    start_game(s, addr, battle_state)
 
             else:
                 print(f"[HOST] Unexpected message type: {message_type}")
