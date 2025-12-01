@@ -4,6 +4,8 @@ import base64
 import os
 from datetime import datetime
 
+from typing import Optional
+
 from networking.message_parser import MessageParser
 from networking.udp import ReliableUDP
 
@@ -22,7 +24,7 @@ class ChatHandler:
         socket_obj,
         my_name: str,
         peer_addr,
-        reliable: ReliableUDP | None = None,
+        reliable: Optional[ReliableUDP] = None,
         verbose: bool = False,
         sticker_dir: str = "stickers",
     ):
@@ -114,7 +116,7 @@ class ChatHandler:
         else:
             self.log("Unknown chat content_type:", content_type)
 
-    def _save_sticker_file(self, b64_data: str, sender: str) -> str | None:
+    def _save_sticker_file(self, b64_data: str, sender: str) -> Optional[str]:
         """
         Decode base64 sticker data and save it as a PNG file.
         Returns the filename or None on failure.
