@@ -88,6 +88,10 @@ class BattleState:
         self.log("Rejected attack announce (not in correct state)")
         return False #attack not accepted
     
+    def record_attack_announce(self, attack_data):
+        self.last_attack = attack_data
+        self.log("Recorded attack: ", attack_data)
+    
     #transition to PROCESSING_TURN after doing defense (both players)
     def receive_defense_announce(self):
         if self.current_phase == GamePhase.WAITING_FOR_MOVE:
@@ -185,6 +189,23 @@ class BattleState:
 
 
     # --- DISCREPANCY HANDLING HELPERS ---
+
+    def check_battle_state(self) -> dict:
+        return {
+            "is_host": self.is_host,
+            "seed": self.seed,
+            "current_phase": self.current_phase.name,
+            "my_turn": self.my_turn,
+            "sequence_number": self.sequence_number,
+            "last_attack": self.last_attack,
+            "local_calculation": self.local_calculation,
+            "opponent_calculation": self.opponent_calculation,
+            "local_confirm_sent": self.local_confirm_sent,
+            "opponent_confirm_received": self.opponent_confirm_received,
+            "winner": self.winner,
+            "my_pokemon": str(self.my_pokemon) if self.my_pokemon else None,
+            "opponent_pokemon": str(self.opponent_pokemon) if self.opponent_pokemon else None,
+        }
 
     def has_discrepancy(self) -> bool:
         """
