@@ -78,7 +78,7 @@ def load_pokemon_stats(csv_path: str = "game/pokemon.csv") -> Dict[str, Pokemon]
                 sp_defense=_to_int(row.get("sp_defense")),
                 speed=_to_int(row.get("speed")),
                 weight_kg=_to_float(row.get("weight_kg")),
-                height_m=_to_float (row.get("height_m")),
+                height_m=_to_float(row.get("height_m")),
                 is_legendary=_to_bool_from_int_str(row.get("is_legendary")),
                 raw=row
             )
