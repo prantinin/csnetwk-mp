@@ -109,8 +109,8 @@ class BattleState:
             'sequence': self.sequence_number # or change if separate tracking is needed
         }
 
-        if self.my_pokemon is not None:
-            self.my_pokemon['hp'] = my_remaining_hp #update in view
+        #if self.my_pokemon is not None:
+        #    self.my_pokemon['hp'] = my_remaining_hp #update in view
 
         self.log("Recorded local calculation. My HP:", my_remaining_hp)
         self.check_game_over() #check if its over
@@ -122,8 +122,8 @@ class BattleState:
             'sequence' : opponent_seq
         }
 
-        if self.opponent_pokemon is not None:
-            self.opponent_pokemon['hp'] = opponent_hp #update in view
+        #if self.opponent_pokemon is not None:
+        #    self.opponent_pokemon['hp'] = opponent_hp #update in view
 
         self.log("Received opponent calculation. Opponent HP:", opponent_hp)
         self.check_game_over() #check if its over
@@ -143,7 +143,6 @@ class BattleState:
             return True # already game over so no need to switch
         if self.local_confirm_sent and self.opponent_confirm_received:
             self.log("Both players confirmed calculations. Switching turn.")
-            self.switch_turn()
             return True
         return False
 
@@ -156,6 +155,11 @@ class BattleState:
         self.opponent_calculation = None
         self.local_confirm_sent = False
         self.opponent_confirm_received = False
+
+        # Switch pokemon possession
+        temp = self.my_pokemon
+        self.my_pokemon = self.opponent_pokemon
+        self.opponent_pokemon = temp
         
         self.log("Switched turn. My turn:", self.my_turn)
         # after switching, check if battle ended
@@ -203,6 +207,14 @@ class BattleState:
             "local_confirm_sent": self.local_confirm_sent,
             "opponent_confirm_received": self.opponent_confirm_received,
             "winner": self.winner,
+            "my_pokemon": str(self.my_pokemon) if self.my_pokemon else None,
+            "opponent_pokemon": str(self.opponent_pokemon) if self.opponent_pokemon else None,
+        }
+    
+    def check_my_opp_pokemon(self) -> dict:
+        return {
+            "local_calculation": self.local_calculation,
+            "opponent_calculation": self.opponent_calculation,
             "my_pokemon": str(self.my_pokemon) if self.my_pokemon else None,
             "opponent_pokemon": str(self.opponent_pokemon) if self.opponent_pokemon else None,
         }

@@ -3,7 +3,6 @@ from game.battle_state import BattleState
 from pokeprotocol.protocols import Protocols
 import socket
 import random
-import ast
 
 
 
@@ -82,11 +81,10 @@ def init():
 
                     # Initialize battle state
                     battle_state = BattleState(is_host=True, seed=seed, verbose=True)
-                    joiner_raw_battle_data = ast.literal_eval(joiner_msg['battle_data'])
+                    joiner_raw_battle_data = joiner_msg['battle_data']
                     opp_battle_data = joiner_raw_battle_data['pokemon_name']
                     battle_state.set_pokemon_data(battle_data['pokemon_name'], opp_battle_data)
                     print('\n')
-                    print(battle_state.check_battle_state())
 
                     # Start game
                     protocols.start_game(s, addr, battle_state)

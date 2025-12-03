@@ -2,8 +2,6 @@ from networking.message_parser import MessageParser
 from game.battle_state import BattleState
 from pokeprotocol.protocols import Protocols
 import socket
-import random
-import ast
 
 
 
@@ -39,10 +37,10 @@ def joiner_handshake():
             data, addr = s.recvfrom(1024)
             host_msg = parser.decode_message(data.decode())
             message_type = host_msg.get("message_type")
-            seed = host_msg.get("seed")
 
             # Host handshake response handling
             if message_type == "HANDSHAKE_RESPONSE":
+                seed = host_msg['seed']
                 print(f"[JOINER] Host message received:\n{host_msg}\n")
                 print("[JOINER] Handshake with host complete!\n\n")
 
@@ -66,11 +64,10 @@ def joiner_handshake():
 
                 # Initialize battle state
                 battle_state = BattleState(is_host=False, seed=seed, verbose=True)
-                host_raw_battle_data = ast.literal_eval(host_msg['battle_data'])
+                host_raw_battle_data = host_msg['battle_data']
                 opp_battle_data = host_raw_battle_data['pokemon_name']
                 battle_state.set_pokemon_data(battle_data['pokemon_name'], opp_battle_data)
                 print('\n')
-                print(battle_state.check_battle_state())
 
                 # Start game
                 protocols.start_game(s, addr, battle_state)
