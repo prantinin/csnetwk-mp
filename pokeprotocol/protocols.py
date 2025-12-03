@@ -132,109 +132,110 @@ class Protocols:
             print(state.check_battle_state())
             print('\n')
 
-
-            #! PROCESSING_TURN
-            # Preparing calculation report
-            
-            #DEBUG
-            print(f"before calcu: {state.opponent_pokemon['hp']}")
-
-            remaining_health = Protocols.calculate_damage(state.opponent_pokemon['hp'], state.last_attack['move_damage'])
-            
-            #DEBUG
-            print(f"After calculation: {remaining_health}")
-
-            state.opponent_pokemon['hp'] = remaining_health
-            
-            #DEBUG
-            print(f"changed hp: {state.opponent_pokemon}")
-            print(f"After recording: {state.opponent_pokemon['hp']}")
-            print(f"Check other: {state.my_pokemon['hp']}")
-            
-            #DEBUG
-            print(state.check_battle_state())
-            print('\n')
-
-            # Status message following calculation confirmation
-            effect = "super effective"  # example palang
-            status_message = (f"{state.my_pokemon['pokemon']} used {state.last_attack['move']}! It was {effect}!")
-
-            # Send calculation report
-            calcu_report = {
-                "message_type": "CALCULATION_REPORT",
-                "attacker": state.my_pokemon['pokemon'],
-                "move_used": my_move['move_name']['move'],      # will change later
-                "remaining_health": state.my_pokemon['hp'],
-                "damage_dealt": my_move['move_name']['move_damage'],    # will change later
-                "defender_hp_remaining": remaining_health,
-                "status_message": status_message,
-                "sequence_number": state.next_sequence_number()
-            }
-            
-            #DEBUG
-            print(f"Check other: {state.my_pokemon['hp']}")
-            
-            state.send_calculation_confirm()
-            socket_obj.sendto(parser.encode_message(calcu_report).encode(), addr)
-            print("Calculation report sent! Waiting for opponent report...\n")
-
-            #DEBUG
-            print(f"Check other: {state.my_pokemon['hp']}")
-
-            # Receive opp calculation report
-            data, __ = socket_obj.recvfrom(1024)
-            recvd_msg = parser.decode_message(data.decode())
-            state.receive_calculation_confirm()
-            print(f"Check other: {state.my_pokemon['hp']}")
-            print("Opponent report received! Comparing reports...")
-            print(recvd_msg)
-            print('\n')
-
-            # Comparing reports
-            if recvd_msg['message_type'] == "CALCULATION_REPORT":
+            confirmed_calcu = False
+            while not confirmed_calcu:
+                #! PROCESSING_TURN
+                # Preparing calculation report
                 
-                # Similar reports -> switch turns
-                if state.both_confirmed():
-                    print(f"Calculation reports similar!")
+                #DEBUG
+                print(f"before calcu: {state.opponent_pokemon['hp']}")
+
+                remaining_health = Protocols.calculate_damage(state.opponent_pokemon['hp'], state.last_attack['move_damage'])
+                
+                #DEBUG
+                print(f"After calculation: {remaining_health}")
+
+                state.opponent_pokemon['hp'] = remaining_health
+                
+                #DEBUG
+                print(f"changed hp: {state.opponent_pokemon}")
+                print(f"After recording: {state.opponent_pokemon['hp']}")
+                print(f"Check other: {state.my_pokemon['hp']}")
+                
+                #DEBUG
+                print(state.check_battle_state())
+                print('\n')
+
+                # Status message following calculation confirmation
+                effect = "super effective"  # example palang
+                status_message = (f"{state.my_pokemon['pokemon']} used {state.last_attack['move']}! It was {effect}!")
+
+                # Send calculation report
+                calcu_report = {
+                    "message_type": "CALCULATION_REPORT",
+                    "attacker": state.my_pokemon['pokemon'],
+                    "move_used": my_move['move_name']['move'],      # will change later
+                    "remaining_health": state.my_pokemon['hp'],
+                    "damage_dealt": my_move['move_name']['move_damage'],    # will change later
+                    "defender_hp_remaining": remaining_health,
+                    "status_message": status_message,
+                    "sequence_number": state.next_sequence_number()
+                }
+                
+                #DEBUG
+                print(f"Check other: {state.my_pokemon['hp']}")
+                
+                state.send_calculation_confirm()
+                socket_obj.sendto(parser.encode_message(calcu_report).encode(), addr)
+                print("Calculation report sent! Waiting for opponent report...\n")
 
                 #DEBUG
-                print(state.check_my_opp_pokemon())
-                    
-                confirmed_msg = {
-                    "message_type": "CALCULATION_CONFIRMATION",
-                    "sequence_number": state.next_sequence_number()
-                }
-                socket_obj.sendto(parser.encode_message(confirmed_msg).encode(), addr)
-                confirmed_calcu = True
+                print(f"Check other: {state.my_pokemon['hp']}")
 
-                # Check if opponent has same calcu
+                # Receive opp calculation report
                 data, __ = socket_obj.recvfrom(1024)
                 recvd_msg = parser.decode_message(data.decode())
+                state.receive_calculation_confirm()
+                print(f"Check other: {state.my_pokemon['hp']}")
+                print("Opponent report received! Comparing reports...")
+                print(recvd_msg)
+                print('\n')
 
-                if recvd_msg['message_type'] == "CALCULATION_CONFIRMATION":
-                    print("Opponent has same calcu!")
+                # Comparing reports
+                if recvd_msg['message_type'] == "CALCULATION_REPORT":
+                    
+                    # Similar reports -> switch turns
+                    if state.both_confirmed():
+                        print(f"Calculation reports similar!")
 
                     #DEBUG
-                    print(state.check_battle_state())
+                    print(state.check_my_opp_pokemon())
+                        
+                    confirmed_msg = {
+                        "message_type": "CALCULATION_CONFIRMATION",
+                        "sequence_number": state.next_sequence_number()
+                    }
+                    socket_obj.sendto(parser.encode_message(confirmed_msg).encode(), addr)
+                    confirmed_calcu = True
 
-                    state.switch_turn()
+                    # Check if opponent has same calcu
+                    data, __ = socket_obj.recvfrom(1024)
+                    recvd_msg = parser.decode_message(data.decode())
+
+                    if recvd_msg['message_type'] == "CALCULATION_CONFIRMATION":
+                        print("Opponent has same calcu!")
+
+                        #DEBUG
+                        print(state.check_battle_state())
+
+                        state.switch_turn()
+                    else:
+                        print(f"Received {recvd_msg['message_type']}!")
+                        print("Recalculating...")
+
+                # Dissimilar turns, recalculate
                 else:
-                    print(f"Received {recvd_msg['message_type']}!")
-                    print("Recalculating...")
-
-            # Dissimilar turns, recalculate
-            else:
-                print(f"Calculation reports similar: {confirmed_calcu}")
-                print("Sending resolution request...")
-                res_req_msg = {
-                    "message_type": "RESOLUTION_REQUEST",
-                    "attacker": state.my_pokemon['pokemon'],
-                    "move_used": state.last_attack['move'],
-                    "damage_dealt": state.last_attack['move_damage'],
-                    "defender_hp_remaining": state.opponent_pokemon['hp'],
-                    "sequence_number": state.next_sequence_number()
-                }
-                socket_obj.sendto(parser.encode_message(res_req_msg).encode(), addr)
+                    print(f"Calculation reports similar: {confirmed_calcu}")
+                    print("Sending resolution request...")
+                    res_req_msg = {
+                        "message_type": "RESOLUTION_REQUEST",
+                        "attacker": state.my_pokemon['pokemon'],
+                        "move_used": state.last_attack['move'],
+                        "damage_dealt": state.last_attack['move_damage'],
+                        "defender_hp_remaining": state.opponent_pokemon['hp'],
+                        "sequence_number": state.next_sequence_number()
+                    }
+                    socket_obj.sendto(parser.encode_message(res_req_msg).encode(), addr)
 
         
         # if resolution req, repeat calcu
@@ -272,112 +273,112 @@ class Protocols:
             
             # Loop til calculations are confirmed
             confirmed_calcu = False
-            #while not confirmed_calcu:
+            while not confirmed_calcu:
 
-            #! PROCESSING_TURN
-            # Receiving opp calculation report (compare later)
-            data, __ = socket_obj.recvfrom(1024)
-            recvd_msg = parser.decode_message(data.decode())
-            state.receive_calculation_confirm()
-            state.receive_calculation_report(
-                int(recvd_msg['defender_hp_remaining']), 
-                int(recvd_msg['sequence_number'])
-            )
-            
-            print(f"Received opponent calculation report:\n {recvd_msg}\n")
+                #! PROCESSING_TURN
+                # Receiving opp calculation report (compare later)
+                data, __ = socket_obj.recvfrom(1024)
+                recvd_msg = parser.decode_message(data.decode())
+                state.receive_calculation_confirm()
+                state.receive_calculation_report(
+                    int(recvd_msg['defender_hp_remaining']), 
+                    int(recvd_msg['sequence_number'])
+                )
+                
+                print(f"Received opponent calculation report:\n {recvd_msg}\n")
 
-            #DEBUG
-            print(state.check_battle_state())
+                #DEBUG
+                print(state.check_battle_state())
 
-            print("Beginning own damage calculation...")
+                print("Beginning own damage calculation...")
 
-            # Preparing own calculation report
-            attacker = recvd_msg['attacker']
-            
-            #DEBUG
-            print(f"before calcu: {state.my_pokemon['hp']}")
-            
-            remaining_health = Protocols.calculate_damage(state.my_pokemon['hp'], state.last_attack['move_damage'])
-            
-            #DEBUG
-            print(f"after calcu: {remaining_health}")
+                # Preparing own calculation report
+                attacker = recvd_msg['attacker']
+                
+                #DEBUG
+                print(f"before calcu: {state.my_pokemon['hp']}")
+                
+                remaining_health = Protocols.calculate_damage(state.my_pokemon['hp'], state.last_attack['move_damage'])
+                
+                #DEBUG
+                print(f"after calcu: {remaining_health}")
 
-            state.my_pokemon['hp'] = remaining_health
+                state.my_pokemon['hp'] = remaining_health
 
-            #DEBUG
-            print(f"changed hp: {state.my_pokemon}")
-            print(f"After recording: {state.my_pokemon['hp']}")
-            print(f"Check other: {state.opponent_pokemon['hp']}")
-            
-            #DEBUG
-            print(state.check_battle_state())
-            print('\n')
+                #DEBUG
+                print(f"changed hp: {state.my_pokemon}")
+                print(f"After recording: {state.my_pokemon['hp']}")
+                print(f"Check other: {state.opponent_pokemon['hp']}")
+                
+                #DEBUG
+                print(state.check_battle_state())
+                print('\n')
 
-            # Status message following calculation confirmation
-            effect = "super effective"  # example palang
-            status_message = (f"{state.my_pokemon['pokemon']}'s {state.last_attack['move']} hit {state.opponent_pokemon['pokemon']}! It was {effect}!")
+                # Status message following calculation confirmation
+                effect = "super effective"  # example palang
+                status_message = (f"{state.my_pokemon['pokemon']}'s {state.last_attack['move']} hit {state.opponent_pokemon['pokemon']}! It was {effect}!")
 
-            # Send calculation report
-            calcu_report = {
-                "message_type": "CALCULATION_REPORT",
-                "attacker": state.opponent_pokemon['pokemon'],
-                "move_used": state.last_attack['move'],
-                "remaining_health": state.opponent_pokemon['hp'],
-                "damage_dealt": state.last_attack['move_damage'],             
-                "defender_hp_remaining": remaining_health,
-                "status_message": status_message,
-                "sequence_number": state.next_sequence_number()
-            }         
-            socket_obj.sendto(parser.encode_message(calcu_report).encode(), addr)
-            state.send_calculation_confirm()
-            state.record_local_calculation(remaining_health)
-            
-            print("Calculation report complete and sent to opponent.")
-            print("Awaiting opponent results...")
+                # Send calculation report
+                calcu_report = {
+                    "message_type": "CALCULATION_REPORT",
+                    "attacker": state.opponent_pokemon['pokemon'],
+                    "move_used": state.last_attack['move'],
+                    "remaining_health": state.opponent_pokemon['hp'],
+                    "damage_dealt": state.last_attack['move_damage'],             
+                    "defender_hp_remaining": remaining_health,
+                    "status_message": status_message,
+                    "sequence_number": state.next_sequence_number()
+                }         
+                socket_obj.sendto(parser.encode_message(calcu_report).encode(), addr)
+                state.send_calculation_confirm()
+                state.record_local_calculation(remaining_health)
+                
+                print("Calculation report complete and sent to opponent.")
+                print("Awaiting opponent results...")
 
-            #DEBUG
-            print(state.check_battle_state())
-            print('\n')
+                #DEBUG
+                print(state.check_battle_state())
+                print('\n')
 
-            # Receiving opponent message
-            data, __ = socket_obj.recvfrom(1024)
-            recvd_msg = parser.decode_message(data.decode())
+                # Receiving opponent message
+                data, __ = socket_obj.recvfrom(1024)
+                recvd_msg = parser.decode_message(data.decode())
 
-            # Opponent says reports are similar
-            if recvd_msg['message_type'] == "CALCULATION_CONFIRMATION":
+                # Opponent says reports are similar
+                if recvd_msg['message_type'] == "CALCULATION_CONFIRMATION":
 
-                # I say reports are similar
-                if state.both_confirmed():
-                    print(f"Calculation reports similar!")
+                    # I say reports are similar
+                    if state.both_confirmed():
+                        print(f"Calculation reports similar!")
 
-                    #DEBUG
-                    print(state.check_battle_state())
+                        #DEBUG
+                        print(state.check_battle_state())
 
-                    confirmed_msg = {
-                        "message_type": "CALCULATION_CONFIRMATION",
-                        "sequence_number": state.next_sequence_number()
-                    }
-                    socket_obj.sendto(parser.encode_message(confirmed_msg).encode(), addr)
+                        confirmed_msg = {
+                            "message_type": "CALCULATION_CONFIRMATION",
+                            "sequence_number": state.next_sequence_number()
+                        }
+                        socket_obj.sendto(parser.encode_message(confirmed_msg).encode(), addr)
 
-                    state.switch_turn()
-                    confirmed_calcu = True
+                        state.switch_turn()
+                        confirmed_calcu = True
 
-                # I say reports are not similar
+                    # I say reports are not similar
+                    else:
+                        print(f"Calculation reports similar: {confirmed_calcu}")
+                        print("Sending resolution request...")
+                        res_req_msg = {
+                            "message_type": "RESOLUTION_REQUEST",
+                            "attacker": state.my_pokemon['pokemon'],
+                            "move_used": state.last_attack['move'],
+                            "damage_dealt": state.last_attack['move_damage'],
+                            "defender_hp_remaining": state.opponent_pokemon['hp'],
+                            "sequence_number": state.next_sequence_number()
+                        }
+                        socket_obj.sendto(parser.encode_message(res_req_msg).encode(), addr)
                 else:
-                    print(f"Calculation reports similar: {confirmed_calcu}")
+                    print(f"Calculation reports dissimilar.")
                     print("Sending resolution request...")
-                    res_req_msg = {
-                        "message_type": "RESOLUTION_REQUEST",
-                        "attacker": state.my_pokemon['pokemon'],
-                        "move_used": state.last_attack['move'],
-                        "damage_dealt": state.last_attack['move_damage'],
-                        "defender_hp_remaining": state.opponent_pokemon['hp'],
-                        "sequence_number": state.next_sequence_number()
-                    }
-                    socket_obj.sendto(parser.encode_message(res_req_msg).encode(), addr)
-            else:
-                print(f"Calculation reports dissimilar.")
-                print("Sending resolution request...")
 
         
         else:
