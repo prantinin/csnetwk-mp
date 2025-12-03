@@ -134,6 +134,9 @@ class Protocols:
 
             confirmed_calcu = False
             while not confirmed_calcu:
+                
+                
+                
                 #! PROCESSING_TURN
                 # Preparing calculation report
                 
@@ -215,10 +218,34 @@ class Protocols:
                     if recvd_msg['message_type'] == "CALCULATION_CONFIRMATION":
                         print("Opponent has same calcu!")
 
+                        # Printing status messages
+                        print(status_message)
+                        print(f"{state.opponent_pokemon['pokemon']}: -{state.last_attack['move_damage']} hp")
+
+                        state.switch_turn()
+
                         #DEBUG
                         print(state.check_battle_state())
 
-                        state.switch_turn()
+
+
+                        #! GAME_OVER
+                        # Receiving/sending any game over messages
+                        if state.winner == "me":
+                            game_over = {
+                                "message_type": "GAME_OVER",
+                                "winner": state.my_pokemon['pokemon'],
+                                "loser": state.opponent_pokemon['pokemon'], 
+                                "sequence_number": state.next_sequence_number()
+                            }
+                            socket_obj.sendto(parser.encode_message(game_over).encode(), addr)
+                            print(f"{state.opponent_pokemon['pokemon']} has fainted! You win, {state.my_pokemon['pokemon']}!")
+                        elif state.winner == "opponent":
+                            data, __ = socket_obj.recvfrom(1024)
+                            recvd_msg = parser.decode_message(data.decode())
+                            print(f"{state.my_pokemon['pokemon']} has fainted! You win, {state.opponent_pokemon['pokemon']}!")
+
+                            
                     else:
                         print(f"Received {recvd_msg['message_type']}!")
                         print("Recalculating...")
@@ -346,7 +373,7 @@ class Protocols:
 
                 # Opponent says reports are similar
                 if recvd_msg['message_type'] == "CALCULATION_CONFIRMATION":
-
+                    
                     # I say reports are similar
                     if state.both_confirmed():
                         print(f"Calculation reports similar!")
@@ -360,8 +387,30 @@ class Protocols:
                         }
                         socket_obj.sendto(parser.encode_message(confirmed_msg).encode(), addr)
 
+                        # Printing status messages
+                        print(status_message)
+                        print(f"{state.opponent_pokemon['pokemon']}: -{state.last_attack['move_damage']} hp")
+
                         state.switch_turn()
                         confirmed_calcu = True
+
+
+
+                        #! GAME_OVER
+                        # Receiving/sending any game over messages
+                        if state.winner == "me":
+                            game_over = {
+                                "message_type": "GAME_OVER",
+                                "winner": state.my_pokemon['pokemon'],
+                                "loser": state.opponent_pokemon['pokemon'], 
+                                "sequence_number": state.next_sequence_number()
+                            }
+                            socket_obj.sendto(parser.encode_message(game_over).encode(), addr)
+                            print(f"{state.opponent_pokemon['pokemon']} has fainted! You win, {state.my_pokemon['pokemon']}!")
+                        elif state.winner == "opponent":
+                            data, __ = socket_obj.recvfrom(1024)
+                            recvd_msg = parser.decode_message(data.decode())
+                            print(f"{state.my_pokemon['pokemon']} has fainted! You win, {state.opponent_pokemon['pokemon']}!")
 
                     # I say reports are not similar
                     else:
@@ -389,7 +438,7 @@ class Protocols:
     # Modified start_game to call the two functions
     def start_game(self, socket_obj, addr, state: BattleState):
 
-        while not state.is_game_over():
+        while not state.check_game_over():
             if state.my_turn:
                 self.your_turn(socket_obj, addr, state)
             else:
