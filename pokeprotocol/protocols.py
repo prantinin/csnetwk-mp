@@ -1,5 +1,9 @@
 from networking.message_parser import MessageParser
 from game.battle_state import BattleState
+from game.pokemon_stats import load_pokemon_stats, get_by_name
+from game.damage_calculator import calculate_damage
+
+
 import socket
 
 parser = MessageParser()
@@ -11,7 +15,8 @@ their_turn_divider = "================== OPPONENT'S TURN =======\n"
 
 class Protocols:
 
-
+    def __init__(self):
+        self.pokemon_stats = load_pokemon_stats("game/pokemon.csv")
 
     #! INITIALIZATION
 
@@ -34,6 +39,17 @@ class Protocols:
         
         while not valid_poke:
             poke_name = input("Choose your Pokemon: ")
+
+            pokemon = get_by_name(poke_name, self.pokemon_stats)
+
+            if pokemon is None:
+                print("Pokemon not found in CSV. Try again.")
+                continue
+
+            poke_data = self.pokemon_to_dict(pokemon)
+            
+            #DEBUG
+            print(poke_data)
 
             # change this later. dummy data for now
             poke_data = {

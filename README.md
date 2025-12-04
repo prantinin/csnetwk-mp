@@ -53,3 +53,4 @@ We acknowledge the use of ChatGPT and CoPilot in the development of this applica
 - Does my code cover all that is needed from the rubric?
 - Help me test all of the parts I was assigned.
 - can you give me a complete lists of pokemon type chart?
+- How to integrate damage calculator and pokemon stat functions to pokeprotocols

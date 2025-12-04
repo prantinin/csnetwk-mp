@@ -5,7 +5,7 @@
 
 
 
-from pokemon_stats import get_by_name
+from game.pokemon_stats import get_by_name
 
 def get_type_effectiveness(move_type, defender_type1, defender_type2):
     # Primary

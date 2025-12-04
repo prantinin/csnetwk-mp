@@ -98,6 +98,20 @@ def get_by_number(number: int, stats: Dict[str, Pokemon]) -> Optional[Pokemon]:
             return p
     return None
 
+def pokemon_to_dict(self, pokemon):
+    return {
+        "name": pokemon.name,
+        "type1": pokemon.type1,
+        "type2": pokemon.type2,
+        "hp": pokemon.hp,
+        "attack": pokemon.attack,
+        "defense": pokemon.defense,
+        "special_attack": pokemon.sp_attack,
+        "special_defense": pokemon.sp_defense,
+        "speed": pokemon.speed
+    }
+
+
 # quick CLI test
 if __name__ == "__main__":
     import pprint, sys
