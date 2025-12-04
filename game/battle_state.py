@@ -44,6 +44,11 @@ class BattleState:
 
     #! SETUP
 
+    #toggle verbose mode on/off
+    def set_verbose(self, verbose: bool):
+        self.verbose = verbose
+        self.log(f"Verbose mode {'enabled' if verbose else 'disabled'}")
+
     #for verbose mode or debugging
     def log(self, *args):
         if self.verbose:

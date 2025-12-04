@@ -3,9 +3,9 @@ from game.battle_state import BattleState, GamePhase
 def test_basic_flow():
     print("=== Testing Basic Battle Flow ===\n")
     
-    # Setup
-    host = BattleState(is_host=True, seed=12345, verbose=True)
-    joiner = BattleState(is_host=False, seed=12345, verbose=True)
+    # Setup - start with verbose OFF
+    host = BattleState(is_host=True, seed=12345, verbose=False)
+    joiner = BattleState(is_host=False, seed=12345, verbose=False)
     
     # Set pokemon data
     host_pokemon = {'name': 'Pikachu', 'hp': 100}
@@ -14,7 +14,7 @@ def test_basic_flow():
     host.set_pokemon_data(host_pokemon.copy(), joiner_pokemon.copy())
     joiner.set_pokemon_data(joiner_pokemon.copy(), host_pokemon.copy())
     
-    print("\n--- Turn 1: Host attacks ---")
+    print("\n--- Turn 1: Host attacks (verbose OFF) ---")
     # Host attacks
     assert host.can_attack() == True
     assert joiner.can_defend() == True
@@ -28,6 +28,11 @@ def test_basic_flow():
     
     assert host.current_phase == GamePhase.PROCESSING_TURN
     assert joiner.current_phase == GamePhase.PROCESSING_TURN
+    
+    # Turn ON verbose to see the calculation phase
+    print("\n--- Enabling verbose for calculation phase ---")
+    host.set_verbose(True)
+    joiner.set_verbose(True)
     
     # Calculate damage
     joiner.record_local_calculation(70)  # Joiner takes 30 damage
@@ -45,8 +50,11 @@ def test_basic_flow():
     joiner.receive_calculation_confirm()
     
     # Check turn switch
-    host.both_confirmed()
-    joiner.both_confirmed()
+    assert host.both_confirmed() == True
+    assert joiner.both_confirmed() == True
+    
+    host.switch_turn()
+    joiner.switch_turn()
     
     assert host.my_turn == False
     assert joiner.my_turn == True
@@ -68,6 +76,9 @@ def test_game_over():
     host.set_pokemon_data({'hp': 100}, {'hp': 10})
     joiner.set_pokemon_data({'hp': 10}, {'hp': 100})
     
+    # Update joiner's pokemon HP to 0
+    joiner.my_pokemon['hp'] = 0
+    
     # Simulate fatal damage
     joiner.record_local_calculation(0)  # Joiner faints
     
@@ -76,6 +87,32 @@ def test_game_over():
     
     print("\n Game over test passed!")
 
+def test_verbose_toggle():
+    print("\n=== Testing Verbose Toggle ===\n")
+    
+    # Start with verbose OFF
+    print("--- TEST 1: Verbose=False (should see NO debug messages) ---")
+    battle = BattleState(is_host=True, seed=12345, verbose=False)
+    battle.log("This should NOT print (verbose is OFF)")
+    battle.set_pokemon_data({'hp': 100}, {'hp': 100})
+    battle.next_sequence_number()
+    battle.can_attack()
+    battle.record_local_calculation(100)
+    print("   ^^ No debug messages above? Good!\n")
+    
+    # Turn verbose ON
+    print("--- TEST 2: Verbose=True (SHOULD see debug messages) ---")
+    battle.set_verbose(True)
+    battle.log("This SHOULD print (verbose is now ON)")
+    battle.set_pokemon_data({'hp': 100}, {'hp': 100})
+    battle.next_sequence_number()
+    battle.can_attack()
+    battle.record_local_calculation(100)
+    print("   ^^ Debug messages appeared above? Good!\n")
+    
+    print(" Verbose toggle test passed!")
+
 if __name__ == "__main__":
+    test_verbose_toggle()
     test_basic_flow()
     test_game_over()
