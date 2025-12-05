@@ -27,26 +27,17 @@ def calculate_damage(state: BattleState, stat_confirm, your_turn):
     if stat_confirm == "atk":
         atk_stat = attacker['sp_attack']
         def_stat = defender['defense']
-        #DEBUG
-        print(f"Special attack: atk={atk_stat}, def={def_stat}")
 
     # Refer to pokemon's special defense boost
     elif stat_confirm == "def":
         atk_stat = attacker['attack']
         def_stat = defender['sp_defense']
-        #DEBUG
-        print(f"Special defense: atk={atk_stat}, def={def_stat}")
     
     # Pokemons' normal stats
     else:
         atk_stat = attacker['attack']
         def_stat = defender['defense']
-        #DEBUG
-        print(f"Normal: atk={atk_stat}, def={def_stat}")
     
-    #DEBUG 
-    print(f"[DEBUG] Attacker stat: {atk_stat}\nDefender stat: {def_stat}")
-
     # Getting attacker's type effectiveness against defender
     type1_eff = get_type_effectiveness(defender, attacker['type1'])
 
@@ -55,16 +46,10 @@ def calculate_damage(state: BattleState, stat_confirm, your_turn):
     else:
         type2_eff = 1.0
     
-    #DEBUG
-    print(f"[DEBUG] Attacker type1 effectiveness: {type1_eff}\nAttacker type1 effectiveness: {type2_eff}")
-
     # Actual damage calculation
     damage = (base_power * atk_stat * type1_eff * type2_eff) / max(def_stat, 1)
     variance = state.rng.uniform(0.85, 1.0)
     final_damage = max(1, int(damage * variance))
-
-    #DEBUG
-    print(f"[DEBUG]Final damage: {final_damage}")
 
     return final_damage
 

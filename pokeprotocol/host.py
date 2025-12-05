@@ -76,8 +76,7 @@ def init():
                     # Receiving joiner battle setup data
                     data, addr = s.recvfrom(1024)
                     joiner_msg = parser.decode_message(data.decode())
-                    print(f"\n\nBattle setup data received from Joiner:\n{joiner_msg}\n")
-                    print("Battle setup data exchange complete! Battle initialization complete!\n")
+                    print("Battle setup data exchange complete!\nBattle initialization complete!\n")
 
                     # Initialize battle state
                     battle_state = BattleState(is_host=True, seed=seed, verbose=True)

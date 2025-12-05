@@ -51,7 +51,6 @@ def init():
                 print("Awaiting host battle setup data...\n")
 
             elif message_type == "BATTLE_SETUP":
-                print(f"\nBattle setup data received from Host:\n{host_msg}\n")
 
                 # Sending host battle setup data
                 battle_data = protocols.joiner_battle_setup()

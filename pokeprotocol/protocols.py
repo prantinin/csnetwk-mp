@@ -48,9 +48,6 @@ class Protocols:
                 print("Pokemon not found in CSV. Try again.")
                 continue
             
-            #DEBUG
-            print(pokemon)
-
             valid_poke = True
 
         while not valid_atk:
@@ -81,8 +78,7 @@ class Protocols:
             "pokemon": pokemon_to_dict(pokemon)
         }
 
-        #DEBUG
-        print(poke_stats)
+        print("Successful battle setup!")
 
         return poke_stats
     
@@ -103,9 +99,6 @@ class Protocols:
                 print("Pokemon not found in CSV. Try again.")
                 continue
             
-            #DEBUG
-            print(pokemon)
-
             valid_poke = True
 
         while not valid_atk:
@@ -135,8 +128,7 @@ class Protocols:
             "pokemon": pokemon_to_dict(pokemon)
         }
 
-        #DEBUG
-        print(poke_stats)
+        print("Successful battle setup!")
 
         return poke_stats
     
@@ -216,10 +208,6 @@ class Protocols:
             state.receive_defense_announce()
             print("Opponent defense announcement received. Beginning damage calculation...\n")
             
-            #DEBUG
-            print(state.check_battle_state())
-            print('\n')
-
             confirmed_calcu = False
             while not confirmed_calcu:
                 
@@ -228,26 +216,11 @@ class Protocols:
                 #! PROCESSING_TURN
                 # Preparing calculation report
                 
-                #DEBUG
-                print(f"before calcu: {state.opponent_pokemon['hp']}")
-
                 damage = calculate_damage(state, decide_stat_boost, your_turn=True)
                 remaining_health = Protocols.subtract_damage(state.opponent_pokemon['hp'], damage)
                 
-                #DEBUG
-                print(f"After calculation: {remaining_health}")
-
                 state.opponent_pokemon['hp'] = remaining_health
                 
-                #DEBUG
-                print(f"changed hp: {state.opponent_pokemon}")
-                print(f"After recording: {state.opponent_pokemon['hp']}")
-                print(f"Check other: {state.my_pokemon['hp']}")
-                
-                #DEBUG
-                print(state.check_battle_state())
-                print('\n')
-
                 # Status message following calculation confirmation
                 effect = "super effective"  # example palang 
                 status_message = (f"{state.my_pokemon['name']} used {state.last_attack}! It was {effect}!")
@@ -265,16 +238,10 @@ class Protocols:
                     "sequence_number": state.next_sequence_number()
                 }
                 
-                #DEBUG
-                print(f"Check other: {state.my_pokemon['hp']}")
-                
                 socket_obj.sendto(parser.encode_message(calcu_report).encode(), addr)
                 state.send_calculation_confirm()
                 state.record_local_calculation(remaining_health)
                 print("Calculation report sent! Waiting for opponent report...\n")
-
-                #DEBUG
-                print(f"Check other: {state.my_pokemon['hp']}")
 
                 # Receive opp calculation report
                 data, __ = socket_obj.recvfrom(1024)
@@ -284,24 +251,16 @@ class Protocols:
                     int(recvd_msg['defender_hp_remaining']), 
                     int(recvd_msg['sequence_number'])
                 )
-                print(f"Check other: {state.my_pokemon['hp']}")
                 print("Opponent report received! Comparing reports...")
-                print(recvd_msg)
                 print('\n')
 
                 # Comparing reports
                 if recvd_msg['message_type'] == "CALCULATION_REPORT":
                     
-                    #DEBUG
-                    print(state.check_battle_state())
-
                     # Similar reports -> switch turns
                     if state.both_confirmed():
                         print(f"Calculation reports similar!")
 
-                    #DEBUG
-                    print(state.check_my_opp_pokemon())
-                        
                     confirmed_msg = {
                         "message_type": "CALCULATION_CONFIRMATION",
                         "sequence_number": state.next_sequence_number()
@@ -327,9 +286,6 @@ class Protocols:
                         # Switch turns and exit loop
                         state.switch_turn()
                         confirmed_calcu = True
-
-                        #DEBUG
-                        print(state.check_battle_state())
 
 
 
@@ -415,33 +371,12 @@ class Protocols:
                     int(recvd_msg['defender_hp_remaining']), 
                     int(recvd_msg['sequence_number'])
                 )
-                
-                print(f"Received opponent calculation report:\n {recvd_msg}\n")
-
-                #DEBUG
-                print(state.check_battle_state())
-
                 print("Beginning own damage calculation...")
 
-                #DEBUG
-                print(f"before calcu: {state.my_pokemon['hp']}")
-                
                 damage = calculate_damage(state, recvd_msg['decide_stat_boost'], your_turn=False)
                 remaining_health = Protocols.subtract_damage(state.my_pokemon['hp'], damage)
                 
-                #DEBUG
-                print(f"after calcu: {remaining_health}")
-
                 state.my_pokemon['hp'] = remaining_health
-
-                #DEBUG
-                print(f"changed hp: {state.my_pokemon}")
-                print(f"After recording: {state.my_pokemon['hp']}")
-                print(f"Check other: {state.opponent_pokemon['hp']}")
-                
-                #DEBUG
-                print(state.check_battle_state())
-                print('\n')
 
                 # Status message following calculation confirmation
                 effect = "super effective"  # example palang
@@ -465,10 +400,6 @@ class Protocols:
                 print("Calculation report complete and sent to opponent.")
                 print("Awaiting opponent results...")
 
-                #DEBUG
-                print(state.check_battle_state())
-                print('\n')
-
                 # Receiving opponent message
                 data, __ = socket_obj.recvfrom(1024)
                 recvd_msg = parser.decode_message(data.decode())
@@ -476,15 +407,9 @@ class Protocols:
                 # Opponent says reports are similar
                 if recvd_msg['message_type'] == "CALCULATION_CONFIRMATION":
                     
-                    #DEBUG
-                    print(state.check_battle_state())
-
                     # I say reports are similar
                     if state.both_confirmed():
                         print(f"Calculation reports similar!")
-
-                        #DEBUG
-                        print(state.check_battle_state())
 
                         confirmed_msg = {
                             "message_type": "CALCULATION_CONFIRMATION",
