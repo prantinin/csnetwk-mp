@@ -14,7 +14,9 @@ PORT = 65432
 BUFFER_SIZE = 65535  # big enough for base64 stickers
 
 parser = MessageParser()
-protocols = Protocols()
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+reliable = ReliableUDP(sock, verbose=True)
+protocols = Protocols(reliable)
 
 init_divider = "=============== INITIALIZATION ===========\n"
 battle_setup_divider = "=============== BATTLE SETUP ===========\n"
