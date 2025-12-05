@@ -32,12 +32,12 @@ class Protocols:
         valid_def = False
         
         while not valid_com:
-            comms = input("What communication mode would you like? (P2P/BROADCAST) ")
+            comms = input("What communication mode would you like? (P2P/BROADCAST)  ")
             comms = comms.upper()
             if comms == "P2P" or comms == "BROADCAST":
                 valid_com = True
             else:
-                print(f"Please choose only between the two avail. modes:>") 
+                print(f"[ERROR] Please choose only between the two avail. modes") 
         
         while not valid_poke:
             poke_name = input("Choose your Pokemon: ").capitalize()
@@ -45,7 +45,7 @@ class Protocols:
             pokemon = get_by_name(poke_name, self.pokemon_stats)
 
             if pokemon is None:
-                print("Pokemon not found in CSV. Try again.")
+                print("[ERROR] Pokemon not found in CSV. Try again.")
                 continue
             
             valid_poke = True
@@ -54,7 +54,7 @@ class Protocols:
             s_atk = input("How much special attack boost? ").strip()
 
             if not s_atk.isdigit():
-                print("Enter digits only.")
+                print("[ERROR] Enter digits only.")
                 continue
 
             valid_atk = True
@@ -63,7 +63,7 @@ class Protocols:
             s_def = input("How much special defense boost? ")
 
             if not s_def.isdigit():
-                print("Enter digits only.")
+                print("[ERROR] Enter digits only.")
                 continue
 
             valid_def = True
@@ -96,7 +96,7 @@ class Protocols:
             pokemon = get_by_name(poke_name, self.pokemon_stats)
 
             if pokemon is None:
-                print("Pokemon not found in CSV. Try again.")
+                print("[ERROR] Pokemon not found in CSV. Try again.")
                 continue
             
             valid_poke = True
@@ -105,7 +105,7 @@ class Protocols:
             s_atk = input("How much special attack boost? ").strip()
 
             if not s_atk.isdigit():
-                print("Enter digits only.")
+                print("[ERROR] Enter digits only.")
                 continue
 
             valid_atk = True
@@ -114,7 +114,7 @@ class Protocols:
             s_def = input("How much special defense boost? ")
 
             if not s_def.isdigit():
-                print("Enter digits only.")
+                print("[ERROR] Enter digits only.")
                 continue
 
             valid_def = True
@@ -156,19 +156,22 @@ class Protocols:
         
         # Deciding on stat boost
         if int(state.stat_boosts['special_attack_uses']) > 0 or int(state.stat_boosts['special_defense_uses']) > 0:
-            print("Stat boosts:")
-            print(f"Attack boosts left: {state.stat_boosts['special_attack_uses']}")
+            print("\nSTAT BOOSTS")
+            print(f"Attack boosts left:  {state.stat_boosts['special_attack_uses']}")
             print(f"Defense boosts left: {state.stat_boosts['special_defense_uses']}")
+            print("--------------------------")
             
             valid_stat = False
             while not valid_stat:
                 use_stat = input("Would you like to use a special stat boost? (y/n)")
 
                 if use_stat != "y" and use_stat != "n":
-                    print("Answer with y/n only.")
+                    print("[ERROR] Answer with y/n only.")
                     continue
                     
                 valid_stat = True
+            
+            print('\n')
             
             valid_stat = False
             if use_stat == "y":
@@ -177,13 +180,13 @@ class Protocols:
                     decide_stat_boost = input("Use special attack/defense boost? (atk/def)")
 
                     if decide_stat_boost != "atk" and decide_stat_boost != "def":
-                        print("Answer with atk/def only.")
+                        print("[ERROR] Answer with atk/def only.")
                         continue
                     if decide_stat_boost == "atk" and int(state.stat_boosts['special_attack_uses']) == 0:
-                        print("You're out of special attack boosts!")
+                        print("[ERROR] You're out of special attack boosts!")
                         continue
                     if decide_stat_boost == "def" and int(state.stat_boosts['special_defense_uses']) == 0:
-                        print("You're out of special defense boosts!")
+                        print("[ERROR] You're out of special defense boosts!")
                         continue
                     
                     valid_stat = True
@@ -198,7 +201,6 @@ class Protocols:
         }
         state.record_attack_announce(my_move['move_name'])
         socket_obj.sendto(parser.encode_message(my_move).encode(), addr)
-        print("\nAttack announcement sent. Awaiting defense announcement...")
 
         # Awaiting opp def announcement
         data, __ = socket_obj.recvfrom(1024)
@@ -206,7 +208,6 @@ class Protocols:
 
         if recvd_msg['message_type'] == "DEFENSE_ANNOUNCE":
             state.receive_defense_announce()
-            print("Opponent defense announcement received. Beginning damage calculation...\n")
             
             confirmed_calcu = False
             while not confirmed_calcu:
@@ -216,13 +217,11 @@ class Protocols:
                 #! PROCESSING_TURN
                 # Preparing calculation report
                 
-                damage = calculate_damage(state, decide_stat_boost, your_turn=True)
+                damage, effect = calculate_damage(state, decide_stat_boost, your_turn=True)
                 remaining_health = Protocols.subtract_damage(state.opponent_pokemon['hp'], damage)
-                
                 state.opponent_pokemon['hp'] = remaining_health
                 
                 # Status message following calculation confirmation
-                effect = "super effective"  # example palang 
                 status_message = (f"{state.my_pokemon['name']} used {state.last_attack}! It was {effect}!")
 
                 # Send calculation report
@@ -237,11 +236,9 @@ class Protocols:
                     "decide_stat_boost": decide_stat_boost,
                     "sequence_number": state.next_sequence_number()
                 }
-                
                 socket_obj.sendto(parser.encode_message(calcu_report).encode(), addr)
                 state.send_calculation_confirm()
                 state.record_local_calculation(remaining_health)
-                print("Calculation report sent! Waiting for opponent report...\n")
 
                 # Receive opp calculation report
                 data, __ = socket_obj.recvfrom(1024)
@@ -251,15 +248,10 @@ class Protocols:
                     int(recvd_msg['defender_hp_remaining']), 
                     int(recvd_msg['sequence_number'])
                 )
-                print("Opponent report received! Comparing reports...")
-                print('\n')
 
                 # Comparing reports
-                if recvd_msg['message_type'] == "CALCULATION_REPORT":
-                    
-                    # Similar reports -> switch turns
-                    if state.both_confirmed():
-                        print(f"Calculation reports similar!")
+                # Similar reports -> switch turns
+                if recvd_msg['message_type'] == "CALCULATION_REPORT" and state.both_confirmed():
 
                     confirmed_msg = {
                         "message_type": "CALCULATION_CONFIRMATION",
@@ -268,12 +260,11 @@ class Protocols:
                     socket_obj.sendto(parser.encode_message(confirmed_msg).encode(), addr)
                     confirmed_calcu = True
 
-                    # Check if opponent has same calcu
+                    # Check if opponent confirmed too
                     data, __ = socket_obj.recvfrom(1024)
                     recvd_msg = parser.decode_message(data.decode())
 
                     if recvd_msg['message_type'] == "CALCULATION_CONFIRMATION":
-                        print("Opponent has same calcu!")
                         
                         # Update stat boost used
                         if decide_stat_boost != "none":
@@ -281,7 +272,7 @@ class Protocols:
 
                         # Printing status messages
                         print(status_message)
-                        print(f"{state.opponent_pokemon['name']}: -{damage} hp")
+                        print(f"{state.opponent_pokemon['name']}: -{damage} hp\n")
 
                         # Switch turns and exit loop
                         state.switch_turn()
@@ -325,7 +316,7 @@ class Protocols:
                     socket_obj.sendto(parser.encode_message(res_req_msg).encode(), addr)
 
         
-        # if resolution req, repeat calcu
+        # If resolution req, repeat calculation
         else:
             print(f"Received message type {recvd_msg}. Recomputing damage...")
 
@@ -347,7 +338,6 @@ class Protocols:
         accepted = state.receive_attack_announce(recvd_msg['move_name'])
 
         if accepted:
-            print(f"Opponent attack received: {accepted}")
 
             # Sending def announcement
             my_def_msg = parser.encode_message({
@@ -356,7 +346,6 @@ class Protocols:
             })
             socket_obj.sendto(my_def_msg.encode(), addr)
             state.receive_defense_announce()
-            print("Defense announcement sent.\n")
             
             # Loop til calculations are confirmed
             confirmed_calcu = False
@@ -371,15 +360,12 @@ class Protocols:
                     int(recvd_msg['defender_hp_remaining']), 
                     int(recvd_msg['sequence_number'])
                 )
-                print("Beginning own damage calculation...")
 
-                damage = calculate_damage(state, recvd_msg['decide_stat_boost'], your_turn=False)
+                damage, effect = calculate_damage(state, recvd_msg['decide_stat_boost'], your_turn=False)
                 remaining_health = Protocols.subtract_damage(state.my_pokemon['hp'], damage)
-                
                 state.my_pokemon['hp'] = remaining_health
 
                 # Status message following calculation confirmation
-                effect = "super effective"  # example palang
                 status_message = (f"{state.my_pokemon['name']}'s {state.last_attack} hit {state.opponent_pokemon['name']}! It was {effect}!")
 
                 # Send calculation report
@@ -397,9 +383,6 @@ class Protocols:
                 state.send_calculation_confirm()
                 state.record_local_calculation(remaining_health)
                 
-                print("Calculation report complete and sent to opponent.")
-                print("Awaiting opponent results...")
-
                 # Receiving opponent message
                 data, __ = socket_obj.recvfrom(1024)
                 recvd_msg = parser.decode_message(data.decode())
@@ -419,7 +402,7 @@ class Protocols:
 
                         # Printing status messages
                         print(status_message)
-                        print(f"{state.my_pokemon['name']}: -{damage} hp")
+                        print(f"{state.my_pokemon['name']}: -{damage} hp\n")
 
                         # Switch turns and exit loop
                         state.switch_turn()

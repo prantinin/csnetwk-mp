@@ -51,10 +51,28 @@ def calculate_damage(state: BattleState, stat_confirm, your_turn):
     variance = state.rng.uniform(0.85, 1.0)
     final_damage = max(1, int(damage * variance))
 
-    return final_damage
+    # Settling damage effect message
+    effect = get_damage_effect(defender['hp'], final_damage)
+
+    return final_damage, effect
 
 
 def get_type_effectiveness(defense_stats, attacker_type):
     atk_type_fixed = attacker_type.lower()
 
     return defense_stats[f'against_{atk_type_fixed}']
+
+def get_damage_effect(orig_hp, damage):
+    ratio = damage/orig_hp
+    print(ratio)
+
+    if ratio >= 0.9:
+        effect = "super effective"
+    elif ratio < 0.9 and ratio >= 0.6:
+        effect = "very effective"
+    elif ratio < 0.6 and ratio >= 0.3:
+        effect = "effective"
+    else:
+        effect = "not very effective"
+
+    return effect
