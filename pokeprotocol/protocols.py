@@ -215,6 +215,7 @@ class Protocols:
 
         state.send_calculation_confirm()
         self.reliable.send_reliable(calc_msg, addr)
+        print(f"Damage dealt: {20} damage to opponent. Their HP: {remaining}\n")
 
         # wait opponent calc
         while True:
@@ -298,6 +299,7 @@ class Protocols:
         }
 
         self.reliable.send_reliable(calc_msg, addr)
+        print(f"Calculation processed: You took {state.last_attack['move_damage']} damage. HP: {remaining}\n")
         state.send_calculation_confirm()
         state.record_local_calculation(remaining)
 
