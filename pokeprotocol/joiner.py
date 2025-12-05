@@ -1,5 +1,9 @@
 # pokeprotocol/joiner.py
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from networking.message_parser import MessageParser
 from game.battle_state import BattleState
 from pokeprotocol.protocols import Protocols
@@ -13,16 +17,11 @@ HOST = "127.0.0.1"
 PORT = 65432
 BUFFER_SIZE = 65535
 
-parser = MessageParser()
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-reliable = ReliableUDP(sock, verbose=True)
-protocols = Protocols(reliable)
-
 init_divider = "=============== INITIALIZATION ===========\n"
 battle_setup_divider = "=============== BATTLE SETUP ===========\n"
 
 
-def send_ack(sock: socket.socket, addr, seq: int):
+def send_ack(sock: socket.socket, addr, seq: int, parser: MessageParser):
     ack = {
         "message_type": "ACK",
         "sequence_number": seq,
@@ -35,6 +34,7 @@ def handle_incoming_with_chat(
     addr,
     msg: dict,
     chat_handler: ChatHandler,
+    parser: MessageParser,
 ):
     """
     For joiner: handle ACK and CHAT_MESSAGE, forward others to caller.
@@ -51,7 +51,7 @@ def handle_incoming_with_chat(
     if mtype == "CHAT_MESSAGE":
         seq = msg.get("sequence_number")
         if seq is not None:
-            send_ack(sock, addr, seq)
+            send_ack(sock, addr, seq, parser)
         if chat_handler is not None:
             chat_handler.handle_incoming(msg)
         else:
@@ -64,13 +64,25 @@ def handle_incoming_with_chat(
 
 
 def init():
+    parser = MessageParser()
+    
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         print("\n" + init_divider)
-        print(f"/Users/romaaguila/Desktop/csnetwk-mp-main\n")
         print(f"[JOINER] Connected to host at {HOST}:{PORT}")
 
         # IMPORTANT: we DO NOT call s.connect() here
         # so we can safely use sendto() with (HOST, PORT) and recvfrom().
+
+        reliable = ReliableUDP(
+            socket_obj=s,
+            parser=parser,
+            timeout=0.5,
+            max_retries=3,
+            loss_prob=0.0,
+            verbose=True,
+        )
+        
+        protocols = Protocols(reliable)
 
         chat_handler = ChatHandler(
             socket_obj=s,
@@ -99,7 +111,7 @@ def init():
             data, addr = s.recvfrom(BUFFER_SIZE)
             msg = parser.decode_message(data.decode("utf-8"))
 
-            handled = handle_incoming_with_chat(s, addr, msg, chat_handler)
+            handled = handle_incoming_with_chat(s, addr, msg, chat_handler, parser)
             if handled is None:
                 continue
 
@@ -134,7 +146,7 @@ def init():
             if VerboseManager.is_verbose():
                 print(f"[DBUG:JOINER] Received message type: {msg.get('message_type')}")
 
-            handled = handle_incoming_with_chat(s, addr, msg, chat_handler)
+            handled = handle_incoming_with_chat(s, addr, msg, chat_handler, parser)
             if handled is None:
                 continue
 
@@ -179,7 +191,7 @@ def init():
             print(f"[DBUG:JOINER] BattleState initialized for joiner with seed={seed}")
         my_poke_data = joiner_battle_data["pokemon_name"]
         opp_poke_data = host_battle_data["pokemon_name"]
-        battle_state.set_pokemon_data(my_poke_data, opp_poke_data)
+        battle_state.set_pokemon_data(my_poke_data, opp_poke_data, joiner_battle_data["stat_boosts"])
 
         print(
             f"[DBUG:JOINER] Pokemon data set: "

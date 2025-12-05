@@ -83,8 +83,12 @@ def _to_list(s: str) -> list:
 
 
 
-def load_pokemon_stats(csv_path: str = "game/pokemon.csv") -> Dict[str, Pokemon]:   #Loading of .csv file
+def load_pokemon_stats(csv_path: str = None) -> Dict[str, Pokemon]:   #Loading of .csv file
     """Load CSV and return dict keyed by lowercase name -> Pokemon dataclass."""
+    if csv_path is None:
+        # Resolve CSV path relative to this file's location
+        csv_path = os.path.join(os.path.dirname(__file__), "pokemon.csv")
+    
     stats: Dict[str, Pokemon] = {}
     with open(csv_path, newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh, delimiter=",")

@@ -16,7 +16,7 @@ their_turn_divider = "================== OPPONENT'S TURN =======\n"
 
 class Protocols:
     def __init__(self, reliable: ReliableUDP):
-        self.pokemon_stats = load_pokemon_stats("game/pokemon.csv")
+        self.pokemon_stats = load_pokemon_stats()
         self.chat_handler: Optional[ChatHandler] = None
         self.reliable = reliable
         self.parser = MessageParser()
@@ -131,7 +131,7 @@ class Protocols:
             if poke is None:
                 print("Pokemon not found in CSV.")
                 continue
-            print(poke)
+            print(f"Selected: {poke_name.capitalize()}")
             mypoke = {"pokemon": poke_name, "hp": health}
             break
 
@@ -188,6 +188,7 @@ class Protocols:
             msg, _ = self.recv_non_chat(sock)
             if "sequence_number" in msg:
                 if self.reliable.is_duplicate(msg):
+                    self.reliable.send_ack(addr, msg["sequence_number"])
                     continue
                 self.reliable.send_ack(addr, msg["sequence_number"])
             break
@@ -220,12 +221,20 @@ class Protocols:
             msg, _ = self.recv_non_chat(sock)
             if "sequence_number" in msg:
                 if self.reliable.is_duplicate(msg):
+                    self.reliable.send_ack(addr, msg["sequence_number"])
                     continue
                 self.reliable.send_ack(addr, msg["sequence_number"])
             break
-        state.receive_calculation_confirm()
+        state.receive_calculation_report(
+            msg["defender_hp_remaining"],
+            msg["sequence_number"],
+        )
 
-        # switch turn
+        # Record our own calculation (our remaining HP after opponent's counter)
+        if "remaining_health" in msg:
+            state.record_local_calculation(msg["remaining_health"])
+        else:
+            state.record_local_calculation(state.my_pokemon["hp"])
         if state.both_confirmed():
             confirm = {
                 "message_type": "CALCULATION_CONFIRMATION",
@@ -245,6 +254,7 @@ class Protocols:
             msg, _ = self.recv_non_chat(sock)
             if "sequence_number" in msg:
                 if self.reliable.is_duplicate(msg):
+                    self.reliable.send_ack(addr, msg["sequence_number"])
                     continue
                 self.reliable.send_ack(addr, msg["sequence_number"])
             break
@@ -262,6 +272,7 @@ class Protocols:
             msg, _ = self.recv_non_chat(sock)
             if "sequence_number" in msg:
                 if self.reliable.is_duplicate(msg):
+                    self.reliable.send_ack(addr, msg["sequence_number"])
                     continue
                 self.reliable.send_ack(addr, msg["sequence_number"])
             break
@@ -295,6 +306,7 @@ class Protocols:
             msg, _ = self.recv_non_chat(sock)
             if "sequence_number" in msg:
                 if self.reliable.is_duplicate(msg):
+                    self.reliable.send_ack(addr, msg["sequence_number"])
                     continue
                 self.reliable.send_ack(addr, msg["sequence_number"])
             break
@@ -313,4 +325,9 @@ class Protocols:
             else:
                 self.their_turn(sock, addr, state)
 
-        print("\n\n===== GAME OVER =====\n\n")
+        print("\n\n===== GAME OVER =====\n")
+        if state.winner == "me":
+            print("YOU WON!\n")
+        else:
+            print("YOU LOST!\n")
+        print(f"Final HP - You: {state.my_pokemon['hp']}, Opponent: {state.opponent_pokemon['hp']}\n")

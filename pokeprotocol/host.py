@@ -1,5 +1,9 @@
 # pokeprotocol/host.py
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from networking.message_parser import MessageParser
 from game.battle_state import BattleState
 from pokeprotocol.protocols import Protocols
@@ -14,16 +18,11 @@ HOST = "127.0.0.1"
 PORT = 65432
 BUFFER_SIZE = 65535  # big enough for base64 stickers
 
-parser = MessageParser()
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-reliable = ReliableUDP(sock, verbose=True)
-protocols = Protocols(reliable)
-
 init_divider = "=============== INITIALIZATION ===========\n"
 battle_setup_divider = "=============== BATTLE SETUP ===========\n"
 
 
-def send_ack(sock: socket.socket, addr, seq: int):
+def send_ack(sock: socket.socket, addr, seq: int, parser: MessageParser):
     ack = {
         "message_type": "ACK",
         "sequence_number": seq,
@@ -36,6 +35,7 @@ def handle_incoming_with_chat(
     addr,
     msg: dict,
     chat_handler: ChatHandler,
+    parser: MessageParser,
 ):
     """
     For host: handle ACK and CHAT_MESSAGE, forward others to caller.
@@ -52,7 +52,7 @@ def handle_incoming_with_chat(
     if mtype == "CHAT_MESSAGE":
         seq = msg.get("sequence_number")
         if seq is not None:
-            send_ack(sock, addr, seq)
+            send_ack(sock, addr, seq, parser)
         if chat_handler is not None:
             chat_handler.handle_incoming(msg)
         else:
@@ -65,9 +65,30 @@ def handle_incoming_with_chat(
 
 
 def init():
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        s.bind((HOST, PORT))
-
+    parser = MessageParser()
+    
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    
+    retry_count = 0
+    max_retries = 10
+    
+    while retry_count < max_retries:
+        try:
+            s.bind((HOST, PORT))
+            break
+        except OSError:
+            retry_count += 1
+            if retry_count < max_retries:
+                print(f"[HOST] Port {PORT} in use, retrying... (attempt {retry_count}/{max_retries})")
+                import time
+                time.sleep(1)
+            else:
+                s.close()
+                print(f"[HOST] Failed to bind after {max_retries} attempts. Exiting.")
+                raise
+    
+    with s:
         print("\n" + init_divider)
         print(f"[HOST] Host listening on {HOST}:{PORT}...")
         print("[HOST] Awaiting handshake...\n")
@@ -80,6 +101,8 @@ def init():
             loss_prob=0.0,
             verbose=True,
         )
+        
+        protocols = Protocols(reliable)
 
         chat_handler = None
         joiner_addr = None
@@ -93,7 +116,7 @@ def init():
 
             # handle chat or ACK even before joiner is fully set up
             if message_type in ("CHAT_MESSAGE", "ACK"):
-                handled = handle_incoming_with_chat(s, addr, msg, chat_handler)
+                handled = handle_incoming_with_chat(s, addr, msg, chat_handler, parser)
                 if handled is None:
                     continue
 
@@ -159,7 +182,7 @@ def init():
                     data2, addr2 = s.recvfrom(BUFFER_SIZE)
                     msg2 = parser.decode_message(data2.decode("utf-8"))
 
-                    handled2 = handle_incoming_with_chat(s, addr2, msg2, chat_handler)
+                    handled2 = handle_incoming_with_chat(s, addr2, msg2, chat_handler, parser)
                     if handled2 is None:
                         continue
 
@@ -186,7 +209,7 @@ def init():
                     print(f"[DBUG:HOST] BattleState initialized for host with seed={seed}")
                 joiner_raw = joiner_msg["battle_data"]
                 opp_battle_data = joiner_raw["pokemon_name"]
-                battle_state.set_pokemon_data(battle_data["pokemon_name"], opp_battle_data)
+                battle_state.set_pokemon_data(battle_data["pokemon_name"], opp_battle_data, battle_data["stat_boosts"])
                 print(
                     f"\n[DBUG:HOST] Pokemon data set: "
                     f"Mine HP: {battle_state.my_pokemon['hp']} "

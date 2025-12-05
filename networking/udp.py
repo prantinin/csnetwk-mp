@@ -37,6 +37,7 @@ class ReliableUDP:
         self.max_retries = max_retries
         self.loss_prob = loss_prob
         self._next_seq = 0
+        self._received_seqs = set()  # Track received sequence numbers for duplicate detection
 
     def log(self, *args):
         if VerboseManager.is_verbose():
@@ -99,3 +100,29 @@ class ReliableUDP:
 
         self.log(f"Giving up on seq={seq} after {self.max_retries} retries.")
         return False
+
+    def is_duplicate(self, msg_dict: Dict[str, Any]) -> bool:
+        """Check if a message with this sequence number has already been received."""
+        if "sequence_number" not in msg_dict:
+            return False
+        seq = msg_dict.get("sequence_number")
+        if seq in self._received_seqs:
+            self.log(f"Duplicate message detected: seq={seq}")
+            return True
+        self._received_seqs.add(seq)
+        return False
+
+    def send_ack(self, addr, sequence_number: int) -> bool:
+        """Send an ACK message back to the sender."""
+        ack_msg = {
+            "message_type": "ACK",
+            "sequence_number": sequence_number,
+        }
+        payload = self.parser.encode_message(ack_msg).encode("utf-8")
+        try:
+            self.sock.sendto(payload, addr)
+            self.log(f"Sent ACK for seq={sequence_number}")
+            return True
+        except Exception as e:
+            self.log(f"Failed to send ACK for seq={sequence_number}: {e}")
+            return False
