@@ -8,6 +8,7 @@ from networking.message_parser import MessageParser
 from game.battle_state import BattleState
 from game.pokemon_stats import load_pokemon_stats, get_by_name
 from networking.udp import ReliableUDP
+from chat.verbose_mode import VerboseManager
 
 your_turn_divider = "================== YOUR TURN ==============\n"
 their_turn_divider = "================== OPPONENT'S TURN =======\n"
@@ -19,6 +20,17 @@ class Protocols:
         self.chat_handler: Optional[ChatHandler] = None
         self.reliable = reliable
         self.parser = MessageParser()
+
+    # ------------------------------------------------------------------
+    # VERBOSE MODE
+    # ------------------------------------------------------------------
+    def set_verbose(self, verbose: bool):
+        VerboseManager.set_verbose(verbose)
+        self.log(f"Verbose mode {'enabled' if verbose else 'disabled'}")
+
+    def log(self, *args):
+        if VerboseManager.is_verbose():
+            print("[PROTOCOLS]", *args)
 
     # ------------------------------------------------------------------
     # CHAT-HANDLER ATTACH
