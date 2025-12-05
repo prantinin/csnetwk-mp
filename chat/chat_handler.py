@@ -4,6 +4,7 @@ import base64
 import os
 import time
 from typing import Optional, Dict, Any
+from chat.verbose_mode import VerboseManager
 
 
 class ChatHandler:
@@ -51,7 +52,6 @@ class ChatHandler:
         self.my_name = my_name
         self.peer_addr = peer_addr  # (ip, port)
         self.reliable = reliable    # networking.udp.ReliableUDP
-        self.verbose = verbose
 
         # where to save received sticker files
         self.sticker_dir = "stickers_received"
@@ -60,7 +60,7 @@ class ChatHandler:
     # ---------- logging helper ----------
 
     def log(self, *args):
-        if self.verbose:
+        if VerboseManager.is_verbose():
             print("[CHAT]", *args)
 
     # ---------- low-level send via ReliableUDP ----------

@@ -3,6 +3,7 @@
 # load stats from pokemon.csv
 
 # game/pokemon_stats.py
+from chat.verbose_mode import VerboseManager
 from dataclasses import dataclass
 import csv
 from typing import Dict, Optional

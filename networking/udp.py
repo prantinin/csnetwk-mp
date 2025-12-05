@@ -4,6 +4,7 @@ import random
 import socket
 import time
 from typing import Dict, Any
+from chat.verbose_mode import VerboseManager
 
 
 class ReliableUDP:
@@ -35,11 +36,10 @@ class ReliableUDP:
         self.timeout = timeout
         self.max_retries = max_retries
         self.loss_prob = loss_prob
-        self.verbose = verbose
         self._next_seq = 0
 
     def log(self, *args):
-        if self.verbose:
+        if VerboseManager.is_verbose():
             print("[ReliableUDP]", *args)
 
     def next_sequence_number(self) -> int:

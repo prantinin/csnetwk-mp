@@ -5,6 +5,7 @@ from game.battle_state import BattleState
 from pokeprotocol.protocols import Protocols
 from chat.chat_handler import ChatHandler
 from networking.udp import ReliableUDP
+from chat.verbose_mode import VerboseManager
 
 import socket
 
@@ -81,6 +82,8 @@ def init():
         protocols.attach_chat_handler(chat_handler)
 
         print("[JOINER] Sending handshake request...\n")
+        if VerboseManager.is_verbose():
+            print(f"[DBUG:JOINER] Sending HANDSHAKE_REQUEST to {HOST}:{PORT}")
         handshake_req = {
             "message_type": "HANDSHAKE_REQUEST",
         }
@@ -88,6 +91,8 @@ def init():
             parser.encode_message(handshake_req).encode("utf-8"),
             (HOST, PORT),
         )
+        if VerboseManager.is_verbose():
+            print("[DBUG:JOINER] Handshake request sent, waiting for response...")
 
         # === WAIT FOR HANDSHAKE_RESPONSE ===
         while True:
@@ -106,6 +111,8 @@ def init():
                 continue
 
             seed = handled["seed"]
+            if VerboseManager.is_verbose():
+                print(f"[DBUG:JOINER] Received HANDSHAKE_RESPONSE with seed={seed}")
             print("[JOINER] Host message received:")
             print(handled)
             print("\n[JOINER] Handshake with host complete!\n")
@@ -114,6 +121,8 @@ def init():
         # === BATTLE SETUP ===
         print(battle_setup_divider)
         print("Initializing battle setup...")
+        if VerboseManager.is_verbose():
+            print("[DBUG:JOINER] Starting battle setup phase")
         print("Awaiting host battle setup data...\n")
 
         host_battle_data = None
@@ -122,6 +131,8 @@ def init():
         while True:
             data, addr = s.recvfrom(BUFFER_SIZE)
             msg = parser.decode_message(data.decode("utf-8"))
+            if VerboseManager.is_verbose():
+                print(f"[DBUG:JOINER] Received message type: {msg.get('message_type')}")
 
             handled = handle_incoming_with_chat(s, addr, msg, chat_handler)
             if handled is None:
@@ -134,6 +145,8 @@ def init():
                 )
                 continue
 
+            if VerboseManager.is_verbose():
+                print("[DBUG:JOINER] Received BATTLE_SETUP from host")
             print("[JOINER] Host battle setup data received:")
             print(handled)
             host_battle_data = handled["battle_data"]
@@ -143,6 +156,8 @@ def init():
 
         # Joiner chooses Pokémon (this should use input_with_chat internally)
         joiner_battle_data = protocols.joiner_battle_setup()
+        if VerboseManager.is_verbose():
+            print(f"[DBUG:JOINER] Joiner battle data prepared: {joiner_battle_data.get('pokemon_name', 'Unknown')}")
 
         # Send our setup back to host
         joiner_setup_msg = {
@@ -153,11 +168,15 @@ def init():
             parser.encode_message(joiner_setup_msg).encode("utf-8"),
             (HOST, PORT),
         )
+        if VerboseManager.is_verbose():
+            print("[DBUG:JOINER] Sent BATTLE_SETUP message to host")
         print("Battle setup data sent to Host.")
         print("Battle initialization complete!\n")
 
         # === Initialize BattleState ===
         battle_state = BattleState(is_host=False, seed=seed, verbose=True)
+        if VerboseManager.is_verbose():
+            print(f"[DBUG:JOINER] BattleState initialized for joiner with seed={seed}")
         my_poke_data = joiner_battle_data["pokemon_name"]
         opp_poke_data = host_battle_data["pokemon_name"]
         battle_state.set_pokemon_data(my_poke_data, opp_poke_data)
@@ -167,6 +186,8 @@ def init():
             f"Mine HP: {battle_state.my_pokemon['hp']} "
             f"Opponent HP: {battle_state.opponent_pokemon['hp']}\n"
         )
+        if VerboseManager.is_verbose():
+            print(f"[DBUG:JOINER] Joiner pokemon: {battle_state.my_pokemon.get('name', '?')}, Opponent: {battle_state.opponent_pokemon.get('name', '?')}")
 
         # === GAME LOOP ===
         protocols.start_game(s, (HOST, PORT), battle_state)

@@ -1,5 +1,6 @@
 # imports
 from enum import Enum
+from chat.verbose_mode import VerboseManager
 import random
 
 """
@@ -28,7 +29,6 @@ class BattleState:
         self.current_phase = GamePhase.WAITING_FOR_MOVE #after BATTLE_SETUP, transition to this
         self.my_turn = is_host # host peer first
         self.sequence_number = 0
-        self.verbose = verbose
 
         #pokemon stats
         self.my_pokemon = None 
@@ -49,12 +49,12 @@ class BattleState:
 
     #toggle verbose mode on/off
     def set_verbose(self, verbose: bool):
-        self.verbose = verbose
+        VerboseManager.set_verbose(verbose)
         self.log(f"Verbose mode {'enabled' if verbose else 'disabled'}")
 
     #for verbose mode or debugging
     def log(self, *args):
-        if self.verbose:
+        if VerboseManager.is_verbose():
             role = "HOST" if self.is_host else "JOINER"
             print(f"[DBUG:{role}]", *args)
 
