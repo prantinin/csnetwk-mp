@@ -82,8 +82,8 @@ def init():
                     # Initialize battle state
                     battle_state = BattleState(is_host=True, seed=seed, verbose=True)
                     joiner_raw_battle_data = joiner_msg['battle_data']
-                    opp_battle_data = joiner_raw_battle_data['pokemon_name']
-                    battle_state.set_pokemon_data(battle_data['pokemon_name'], opp_battle_data)
+                    opp_battle_data = joiner_raw_battle_data['pokemon']
+                    battle_state.set_pokemon_data(battle_data['pokemon'], opp_battle_data, battle_data['stat_boosts'])
                     print('\n')
 
                     # Start game

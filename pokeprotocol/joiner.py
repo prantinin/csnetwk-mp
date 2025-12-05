@@ -21,7 +21,7 @@ their_turn_divider = "================== OPPONENT'S TURN =======\n"
 
 
 # Initialize joiner
-def joiner_handshake():
+def init():
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         
         # Joiner connects to host
@@ -65,8 +65,8 @@ def joiner_handshake():
                 # Initialize battle state
                 battle_state = BattleState(is_host=False, seed=seed, verbose=True)
                 host_raw_battle_data = host_msg['battle_data']
-                opp_battle_data = host_raw_battle_data['pokemon_name']
-                battle_state.set_pokemon_data(battle_data['pokemon_name'], opp_battle_data)
+                opp_battle_data = host_raw_battle_data['pokemon']
+                battle_state.set_pokemon_data(battle_data['pokemon'], opp_battle_data, battle_data['stat_boosts'])
                 print('\n')
 
                 # Start game
@@ -78,4 +78,4 @@ def joiner_handshake():
 
 
 # MAIN
-joiner_handshake()
+init()

@@ -1,5 +1,6 @@
 # imports
 from enum import Enum
+import random
 
 """
 manage battle state, turn order, and phase transitions
@@ -23,6 +24,7 @@ class BattleState:
         #status
         self.is_host = is_host # boolean true/false
         self.seed = seed
+        self.rng = random.Random(seed)
         self.current_phase = GamePhase.WAITING_FOR_MOVE #after BATTLE_SETUP, transition to this
         self.my_turn = is_host # host peer first
         self.sequence_number = 0
@@ -31,6 +33,7 @@ class BattleState:
         #pokemon stats
         self.my_pokemon = None 
         self.opponent_pokemon = None
+        self.stat_boosts = None
 
         #game state
         self.last_attack = None                     # attack data received
@@ -52,10 +55,11 @@ class BattleState:
 
     #pokemon stats
     #call this after BATTLE_SETUP exchange is sent
-    def set_pokemon_data(self, my_pokemon: dict, opponent_pokemon: dict):
+    def set_pokemon_data(self, my_pokemon: dict, opponent_pokemon: dict, my_stat_boosts):
         self.my_pokemon = my_pokemon
         self.opponent_pokemon = opponent_pokemon
-        self.log("Pokemon data set: Mine HP:", my_pokemon.get('hp'), "Opponent HP:", opponent_pokemon.get('hp'))
+        self.stat_boosts = my_stat_boosts
+        self.log("Pokemon data set: Mine HP:", self.my_pokemon.get('hp'), "Opponent HP:", self.opponent_pokemon.get('hp'), "My stat boosts", self.stat_boosts)
     
     #generate next sequence number
     def next_sequence_number(self) -> int:
@@ -103,6 +107,12 @@ class BattleState:
     #! PROCESSING_TURN
 
     #store local result of own pokemon hp after damage
+    def decrease_stat_boost(self, stat):
+        if stat == "atk":
+            self.stat_boosts['special_attack_uses'] -= 1
+        else:
+            self.stat_boosts['special_defense_uses'] -= 1
+
     def record_local_calculation(self, my_remaining_hp: int):
         self.local_calculation = {
             'hp': my_remaining_hp,
@@ -196,6 +206,7 @@ class BattleState:
             "local_confirm_sent": self.local_confirm_sent,
             "opponent_confirm_received": self.opponent_confirm_received,
             "winner": self.winner,
+            "stat_boosts": self.stat_boosts,
             "my_pokemon": str(self.my_pokemon) if self.my_pokemon else None,
             "opponent_pokemon": str(self.opponent_pokemon) if self.opponent_pokemon else None,
         }

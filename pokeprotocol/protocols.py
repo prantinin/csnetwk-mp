@@ -1,6 +1,6 @@
 from networking.message_parser import MessageParser
 from game.battle_state import BattleState
-from game.pokemon_stats import load_pokemon_stats, get_by_name
+from game.pokemon_stats import load_pokemon_stats, get_by_name, pokemon_to_dict
 from game.damage_calculator import calculate_damage
 
 
@@ -17,17 +17,19 @@ class Protocols:
 
     def __init__(self):
         self.pokemon_stats = load_pokemon_stats("game/pokemon.csv")
+        print("Pokemon stats loaded!")
+
+
 
     #! INITIALIZATION
 
     # Host battle setup
     def host_battle_setup(self):
         
-        # dummy data
-        health = 100
-        
         valid_com = False
         valid_poke = False
+        valid_atk = False
+        valid_def = False
         
         while not valid_com:
             comms = input("What communication mode would you like? (P2P/BROADCAST) ")
@@ -38,69 +40,105 @@ class Protocols:
                 print(f"Please choose only between the two avail. modes:>") 
         
         while not valid_poke:
-            poke_name = input("Choose your Pokemon: ")
+            poke_name = input("Choose your Pokemon: ").capitalize()
 
             pokemon = get_by_name(poke_name, self.pokemon_stats)
 
             if pokemon is None:
                 print("Pokemon not found in CSV. Try again.")
                 continue
-
-            poke_data = self.pokemon_to_dict(pokemon)
             
             #DEBUG
-            print(poke_data)
-
-            # change this later. dummy data for now
-            poke_data = {
-                "pokemon": poke_name,
-                "hp": int(health)
-            }
+            print(pokemon)
 
             valid_poke = True
 
-        s_atk = input("How much special attack boost? ")
-        s_def = input("How much special defense boost? ")
+        while not valid_atk:
+            s_atk = input("How much special attack boost? ").strip()
 
-        return {
+            if not s_atk.isdigit():
+                print("Enter digits only.")
+                continue
+
+            valid_atk = True
+
+        while not valid_def:
+            s_def = input("How much special defense boost? ")
+
+            if not s_def.isdigit():
+                print("Enter digits only.")
+                continue
+
+            valid_def = True
+
+        poke_stats = {
             "communication_mode": comms,
-            "pokemon_name": poke_data,
+            "pokemon_name": pokemon.name,
             "stat_boosts": {
-                "special_attack_uses": s_atk,
-                "special_defense_uses": s_def
-            }
+                "special_attack_uses": int(s_atk),
+                "special_defense_uses": int(s_def)
+            },
+            "pokemon": pokemon_to_dict(pokemon)
         }
+
+        #DEBUG
+        print(poke_stats)
+
+        return poke_stats
     
 
     # Joiner battle setup
     def joiner_battle_setup(self):
-
-        # dummy data
-        health = 140
-
+        
         valid_poke = False
-
+        valid_atk = False
+        valid_def = False
+        
         while not valid_poke:
-            poke_name = input("Choose your Pokemon: ")
+            poke_name = input("Choose your Pokemon: ").capitalize()
 
-            # change this later. dummy data for now
-            poke_data = {
-                "pokemon": poke_name,
-                "hp": int(health)
-            }
+            pokemon = get_by_name(poke_name, self.pokemon_stats)
+
+            if pokemon is None:
+                print("Pokemon not found in CSV. Try again.")
+                continue
+            
+            #DEBUG
+            print(pokemon)
 
             valid_poke = True
 
-        s_atk = input("How much special attack boost? ")
-        s_def = input("How much special defense boost? ")
+        while not valid_atk:
+            s_atk = input("How much special attack boost? ").strip()
 
-        return {
-            "pokemon_name": poke_data,
+            if not s_atk.isdigit():
+                print("Enter digits only.")
+                continue
+
+            valid_atk = True
+
+        while not valid_def:
+            s_def = input("How much special defense boost? ")
+
+            if not s_def.isdigit():
+                print("Enter digits only.")
+                continue
+
+            valid_def = True
+
+        poke_stats = {
+            "pokemon_name": pokemon.name,
             "stat_boosts": {
-                "special_attack_uses": s_atk,
-                "special_defense_uses": s_def
-            }
+                "special_attack_uses": int(s_atk),
+                "special_defense_uses": int(s_def)
+            },
+            "pokemon": pokemon_to_dict(pokemon)
         }
+
+        #DEBUG
+        print(poke_stats)
+
+        return poke_stats
     
 
 
@@ -111,7 +149,7 @@ class Protocols:
     #! GAME TURNS
 
     @staticmethod
-    def calculate_damage(health, damage):
+    def subtract_damage(health, damage):
         return health - damage
 
     # PLAYER ATTACKS, OPPONENT DEFENDS
@@ -120,23 +158,51 @@ class Protocols:
         
         #! WAITING_FOR_MOVE
 
-        # You choosing attack move
-        # pls remember to lower() pokemon moves from cv as well
+        # Choosing attack move
         print(your_turn_divider)
-        move_name = input("Choose your attack move: ").lower()
+        move_name = input("Choose your attack move: ").capitalize()
+        
+        # Deciding on stat boost
+        if int(state.stat_boosts['special_attack_uses']) > 0 or int(state.stat_boosts['special_defense_uses']) > 0:
+            print("Stat boosts:")
+            print(f"Attack boosts left: {state.stat_boosts['special_attack_uses']}")
+            print(f"Defense boosts left: {state.stat_boosts['special_defense_uses']}")
+            
+            valid_stat = False
+            while not valid_stat:
+                use_stat = input("Would you like to use a special stat boost? (y/n)")
+
+                if use_stat != "y" and use_stat != "n":
+                    print("Answer with y/n only.")
+                    continue
+                    
+                valid_stat = True
+            
+            valid_stat = False
+            if use_stat == "y":
+                while not valid_stat:
+                    # This will be used in damage calculation later
+                    decide_stat_boost = input("Use special attack/defense boost? (atk/def)")
+
+                    if decide_stat_boost != "atk" and decide_stat_boost != "def":
+                        print("Answer with atk/def only.")
+                        continue
+                    
+                    valid_stat = True
+            else:
+                decide_stat_boost = "none"
+        
+        # Sending my move to opponent
         my_move = {
             "message_type": "ATTACK_ANNOUNCE",
-            "move_name": {          # will fix later when data is properly parsed
-                "move": move_name,
-                "move_damage": 20
-            },
+            "move_name": move_name,
             "sequence_number": state.next_sequence_number()
         }
         state.record_attack_announce(my_move['move_name'])
         socket_obj.sendto(parser.encode_message(my_move).encode(), addr)
         print("\nAttack announcement sent. Awaiting defense announcement...")
 
-         # Awaiting opp def announcement
+        # Awaiting opp def announcement
         data, __ = socket_obj.recvfrom(1024)
         recvd_msg = parser.decode_message(data.decode())
 
@@ -159,7 +225,8 @@ class Protocols:
                 #DEBUG
                 print(f"before calcu: {state.opponent_pokemon['hp']}")
 
-                remaining_health = Protocols.calculate_damage(state.opponent_pokemon['hp'], state.last_attack['move_damage'])
+                damage = calculate_damage(state, decide_stat_boost, your_turn=True)
+                remaining_health = Protocols.subtract_damage(state.opponent_pokemon['hp'], damage)
                 
                 #DEBUG
                 print(f"After calculation: {remaining_health}")
@@ -176,18 +243,19 @@ class Protocols:
                 print('\n')
 
                 # Status message following calculation confirmation
-                effect = "super effective"  # example palang
-                status_message = (f"{state.my_pokemon['pokemon']} used {state.last_attack['move']}! It was {effect}!")
+                effect = "super effective"  # example palang 
+                status_message = (f"{state.my_pokemon['name']} used {state.last_attack}! It was {effect}!")
 
                 # Send calculation report
                 calcu_report = {
                     "message_type": "CALCULATION_REPORT",
-                    "attacker": state.my_pokemon['pokemon'],
-                    "move_used": my_move['move_name']['move'],      # will change later
+                    "attacker": state.my_pokemon['name'],
+                    "move_used": my_move['move_name'],
                     "remaining_health": state.my_pokemon['hp'],
-                    "damage_dealt": my_move['move_name']['move_damage'],    # will change later
+                    "damage_dealt": damage,    # will change later
                     "defender_hp_remaining": remaining_health,
                     "status_message": status_message,
+                    "decide_stat_boost": decide_stat_boost,
                     "sequence_number": state.next_sequence_number()
                 }
                 
@@ -236,7 +304,7 @@ class Protocols:
 
                         # Printing status messages
                         print(status_message)
-                        print(f"{state.opponent_pokemon['pokemon']}: -{state.last_attack['move_damage']} hp")
+                        print(f"{state.opponent_pokemon['name']}: -{damage} hp")
 
                         state.switch_turn()
 
@@ -250,16 +318,16 @@ class Protocols:
                         if state.winner == "me":
                             game_over = {
                                 "message_type": "GAME_OVER",
-                                "winner": state.my_pokemon['pokemon'],
-                                "loser": state.opponent_pokemon['pokemon'], 
+                                "winner": state.my_pokemon['name'],
+                                "loser": state.opponent_pokemon['name'], 
                                 "sequence_number": state.next_sequence_number()
                             }
                             socket_obj.sendto(parser.encode_message(game_over).encode(), addr)
-                            print(f"{state.opponent_pokemon['pokemon']} has fainted! You win, {state.my_pokemon['pokemon']}!")
+                            print(f"{state.opponent_pokemon['name']} has fainted! You win, {state.my_pokemon['name']}!")
                         elif state.winner == "opponent":
                             data, __ = socket_obj.recvfrom(1024)
                             recvd_msg = parser.decode_message(data.decode())
-                            print(f"{state.my_pokemon['pokemon']} has fainted! You win, {state.opponent_pokemon['pokemon']}!")
+                            print(f"{state.my_pokemon['name']} has fainted! You win, {state.opponent_pokemon['name']}!")
 
                             
                     else:
@@ -272,9 +340,9 @@ class Protocols:
                     print("Sending resolution request...")
                     res_req_msg = {
                         "message_type": "RESOLUTION_REQUEST",
-                        "attacker": state.my_pokemon['pokemon'],
-                        "move_used": state.last_attack['move'],
-                        "damage_dealt": state.last_attack['move_damage'],
+                        "attacker": state.my_pokemon['name'],
+                        "move_used": state.last_attack,
+                        "damage_dealt": damage,
                         "defender_hp_remaining": state.opponent_pokemon['hp'],
                         "sequence_number": state.next_sequence_number()
                     }
@@ -335,13 +403,11 @@ class Protocols:
 
                 print("Beginning own damage calculation...")
 
-                # Preparing own calculation report
-                attacker = recvd_msg['attacker']
-                
                 #DEBUG
                 print(f"before calcu: {state.my_pokemon['hp']}")
                 
-                remaining_health = Protocols.calculate_damage(state.my_pokemon['hp'], state.last_attack['move_damage'])
+                damage = calculate_damage(state, recvd_msg['decide_stat_boost'], your_turn=False)
+                remaining_health = Protocols.subtract_damage(state.my_pokemon['hp'], damage)
                 
                 #DEBUG
                 print(f"after calcu: {remaining_health}")
@@ -359,15 +425,15 @@ class Protocols:
 
                 # Status message following calculation confirmation
                 effect = "super effective"  # example palang
-                status_message = (f"{state.my_pokemon['pokemon']}'s {state.last_attack['move']} hit {state.opponent_pokemon['pokemon']}! It was {effect}!")
+                status_message = (f"{state.my_pokemon['name']}'s {state.last_attack} hit {state.opponent_pokemon['name']}! It was {effect}!")
 
                 # Send calculation report
                 calcu_report = {
                     "message_type": "CALCULATION_REPORT",
-                    "attacker": state.opponent_pokemon['pokemon'],
-                    "move_used": state.last_attack['move'],
+                    "attacker": state.opponent_pokemon['name'],
+                    "move_used": state.last_attack,
                     "remaining_health": state.opponent_pokemon['hp'],
-                    "damage_dealt": state.last_attack['move_damage'],             
+                    "damage_dealt": damage,             
                     "defender_hp_remaining": remaining_health,
                     "status_message": status_message,
                     "sequence_number": state.next_sequence_number()
@@ -405,7 +471,7 @@ class Protocols:
 
                         # Printing status messages
                         print(status_message)
-                        print(f"{state.opponent_pokemon['pokemon']}: -{state.last_attack['move_damage']} hp")
+                        print(f"{state.my_pokemon['name']}: -{damage} hp")
 
                         state.switch_turn()
                         confirmed_calcu = True
@@ -417,16 +483,16 @@ class Protocols:
                         if state.winner == "me":
                             game_over = {
                                 "message_type": "GAME_OVER",
-                                "winner": state.my_pokemon['pokemon'],
-                                "loser": state.opponent_pokemon['pokemon'], 
+                                "winner": state.my_pokemon['name'],
+                                "loser": state.opponent_pokemon['name'], 
                                 "sequence_number": state.next_sequence_number()
                             }
                             socket_obj.sendto(parser.encode_message(game_over).encode(), addr)
-                            print(f"{state.opponent_pokemon['pokemon']} has fainted! You win, {state.my_pokemon['pokemon']}!")
+                            print(f"{state.opponent_pokemon['name']} has fainted! You win, {state.my_pokemon['name']}!")
                         elif state.winner == "opponent":
                             data, __ = socket_obj.recvfrom(1024)
                             recvd_msg = parser.decode_message(data.decode())
-                            print(f"{state.my_pokemon['pokemon']} has fainted! You win, {state.opponent_pokemon['pokemon']}!")
+                            print(f"{state.my_pokemon['name']} has fainted! You win, {state.opponent_pokemon['name']}!")
 
                     # I say reports are not similar
                     else:
@@ -434,9 +500,9 @@ class Protocols:
                         print("Sending resolution request...")
                         res_req_msg = {
                             "message_type": "RESOLUTION_REQUEST",
-                            "attacker": state.my_pokemon['pokemon'],
-                            "move_used": state.last_attack['move'],
-                            "damage_dealt": state.last_attack['move_damage'],
+                            "attacker": state.my_pokemon['name'],
+                            "move_used": state.last_attack,
+                            "damage_dealt": damage,
                             "defender_hp_remaining": state.opponent_pokemon['hp'],
                             "sequence_number": state.next_sequence_number()
                         }
