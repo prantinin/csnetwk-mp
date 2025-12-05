@@ -1,462 +1,273 @@
+from __future__ import annotations
+
+from typing import Optional
+import socket
+
+from chat.chat_handler import ChatHandler
 from networking.message_parser import MessageParser
 from game.battle_state import BattleState
-from game.pokemon_stats import load_pokemon_stats, get_by_name, pokemon_to_dict
-from game.damage_calculator import calculate_damage
-
-
-import socket
+from game.pokemon_stats import load_pokemon_stats, get_by_name
 
 parser = MessageParser()
 
-divider = "========================================\n"
 your_turn_divider = "================== YOUR TURN ==============\n"
 their_turn_divider = "================== OPPONENT'S TURN =======\n"
 
 
 class Protocols:
-
     def __init__(self):
         self.pokemon_stats = load_pokemon_stats("game/pokemon.csv")
-        print("Pokemon stats loaded!")
+        self.chat_handler: Optional[ChatHandler] = None
 
+    # ------------------------------------------------------------------
+    # CHAT-HANDLER ATTACH
+    # ------------------------------------------------------------------
+    def attach_chat_handler(self, handler: ChatHandler):
+        self.chat_handler = handler
 
+    # ------------------------------------------------------------------
+    # CHAT COMMANDS
+    # ------------------------------------------------------------------
+    def maybe_handle_chat_command(self, text: str) -> bool:
+        """Intercept /chat, /sticker, /stickerfile commands."""
+        if not text.startswith("/"):
+            return False
 
-    #! INITIALIZATION
+        if not self.chat_handler:
+            print("[CHAT] (no chat handler attached)")
+            return True
 
-    # Host battle setup
+        # /chat message
+        if text.startswith("/chat "):
+            msg = text[len("/chat "):].strip()
+            if msg:
+                self.chat_handler.send_text(msg)
+            else:
+                print("[CHAT] Usage: /chat <message>")
+            return True
+
+        # /sticker name
+        if text.startswith("/sticker "):
+            name = text[len("/sticker "):].strip()
+            if name:
+                self.chat_handler.send_sticker(name)
+            else:
+                print("[CHAT] Usage: /sticker <name>")
+            return True
+
+        # /stickerfile path [label]
+        if text.startswith("/stickerfile "):
+            parts = text.split(maxsplit=2)
+            if len(parts) < 2:
+                print("[CHAT] Usage: /stickerfile <path> [label]")
+                return True
+
+            path = parts[1]
+            label = parts[2] if len(parts) == 3 else None
+            self.chat_handler.send_sticker_from_file(path, label)
+            return True
+
+        print("[CHAT] Unknown command.")
+        return True
+
+    # ------------------------------------------------------------------
+    # INPUT WRAPPER
+    # ------------------------------------------------------------------
+    def input_with_chat(self, prompt: str) -> str:
+        while True:
+            user_input = input(prompt).strip()
+            if user_input.startswith("/"):
+                self.maybe_handle_chat_command(user_input)
+                continue
+            return user_input
+
+    # ------------------------------------------------------------------
+    # RECV FILTER
+    # ------------------------------------------------------------------
+    def recv_non_chat(self, sock: socket.socket, bufsize=4096):
+        """Filter CHAT_MESSAGE from battle logic."""
+        while True:
+            data, addr = sock.recvfrom(bufsize)
+            msg = parser.decode_message(data.decode())
+
+            if msg.get("message_type") == "CHAT_MESSAGE":
+                if self.chat_handler:
+                    self.chat_handler.handle_incoming(msg)
+                continue
+
+            return msg, addr
+
+    # ------------------------------------------------------------------
+    # BATTLE SETUP: HOST
+    # ------------------------------------------------------------------
     def host_battle_setup(self):
-        
-        valid_com = False
-        valid_poke = False
-        valid_atk = False
-        valid_def = False
-        
-        while not valid_com:
-            comms = input("What communication mode would you like? (P2P/BROADCAST)  ")
+        health = 100
+
+        # comms
+        while True:
+            comms = self.input_with_chat("What communication mode would you like? (P2P/BROADCAST) ")
             comms = comms.upper()
-            if comms == "P2P" or comms == "BROADCAST":
-                valid_com = True
-            else:
-                print(f"[ERROR] Please choose only between the two avail. modes") 
-        
-        while not valid_poke:
-            poke_name = input("Choose your Pokemon: ").capitalize()
+            if comms in ("P2P", "BROADCAST"):
+                break
+            print("Please choose only P2P or BROADCAST.\n")
 
-            pokemon = get_by_name(poke_name, self.pokemon_stats)
-
-            if pokemon is None:
-                print("[ERROR] Pokemon not found in CSV. Try again.")
+        # pokemon
+        while True:
+            poke_name = self.input_with_chat("Choose your Pokemon: ").lower()
+            poke = get_by_name(poke_name, self.pokemon_stats)
+            if poke is None:
+                print("Pokemon not found in CSV.")
                 continue
-            
-            valid_poke = True
+            print(poke)
+            mypoke = {"pokemon": poke_name, "hp": health}
+            break
 
-        while not valid_atk:
-            s_atk = input("How much special attack boost? ").strip()
+        atk = self.input_with_chat("How much special attack boost? ")
+        df = self.input_with_chat("How much special defense boost? ")
 
-            if not s_atk.isdigit():
-                print("[ERROR] Enter digits only.")
-                continue
-
-            valid_atk = True
-
-        while not valid_def:
-            s_def = input("How much special defense boost? ")
-
-            if not s_def.isdigit():
-                print("[ERROR] Enter digits only.")
-                continue
-
-            valid_def = True
-
-        poke_stats = {
+        return {
             "communication_mode": comms,
-            "pokemon_name": pokemon.name,
+            "pokemon_name": mypoke,
             "stat_boosts": {
-                "special_attack_uses": int(s_atk),
-                "special_defense_uses": int(s_def)
-            },
-            "pokemon": pokemon_to_dict(pokemon)
+                "special_attack_uses": atk,
+                "special_defense_uses": df,
+            }
         }
 
-        print("Successful battle setup!")
-
-        return poke_stats
-    
-
-    # Joiner battle setup
+    # ------------------------------------------------------------------
+    # BATTLE SETUP: JOINER
+    # ------------------------------------------------------------------
     def joiner_battle_setup(self):
-        
-        valid_poke = False
-        valid_atk = False
-        valid_def = False
-        
-        while not valid_poke:
-            poke_name = input("Choose your Pokemon: ").capitalize()
+        health = 140
 
-            pokemon = get_by_name(poke_name, self.pokemon_stats)
+        poke_name = self.input_with_chat("Choose your Pokemon: ").lower()
+        atk = self.input_with_chat("How much special attack boost? ")
+        df = self.input_with_chat("How much special defense boost? ")
 
-            if pokemon is None:
-                print("[ERROR] Pokemon not found in CSV. Try again.")
-                continue
-            
-            valid_poke = True
-
-        while not valid_atk:
-            s_atk = input("How much special attack boost? ").strip()
-
-            if not s_atk.isdigit():
-                print("[ERROR] Enter digits only.")
-                continue
-
-            valid_atk = True
-
-        while not valid_def:
-            s_def = input("How much special defense boost? ")
-
-            if not s_def.isdigit():
-                print("[ERROR] Enter digits only.")
-                continue
-
-            valid_def = True
-
-        poke_stats = {
-            "pokemon_name": pokemon.name,
+        return {
+            "pokemon_name": {"pokemon": poke_name, "hp": health},
             "stat_boosts": {
-                "special_attack_uses": int(s_atk),
-                "special_defense_uses": int(s_def)
-            },
-            "pokemon": pokemon_to_dict(pokemon)
+                "special_attack_uses": atk,
+                "special_defense_uses": df,
+            }
         }
 
-        print("Successful battle setup!")
-
-        return poke_stats
-    
-
-
-
-
-
-
-    #! GAME TURNS
-
-    @staticmethod
-    def subtract_damage(health, damage):
-        return health - damage
-
-    # PLAYER ATTACKS, OPPONENT DEFENDS
-    def your_turn(self, socket_obj, addr, state: BattleState):
-        
-        
-        #! WAITING_FOR_MOVE
-
-        # Choosing attack move
+    # ------------------------------------------------------------------
+    # MAIN TURN: ATTACK
+    # ------------------------------------------------------------------
+    def your_turn(self, sock, addr, state: BattleState):
         print(your_turn_divider)
-        move_name = input("Choose your attack move: ").capitalize()
-        
-        # Deciding on stat boost
-        if int(state.stat_boosts['special_attack_uses']) > 0 or int(state.stat_boosts['special_defense_uses']) > 0:
-            print("\nSTAT BOOSTS")
-            print(f"Attack boosts left:  {state.stat_boosts['special_attack_uses']}")
-            print(f"Defense boosts left: {state.stat_boosts['special_defense_uses']}")
-            print("--------------------------")
-            
-            valid_stat = False
-            while not valid_stat:
-                use_stat = input("Would you like to use a special stat boost? (y/n)")
 
-                if use_stat != "y" and use_stat != "n":
-                    print("[ERROR] Answer with y/n only.")
-                    continue
-                    
-                valid_stat = True
-            
-            print('\n')
-            
-            valid_stat = False
-            if use_stat == "y":
-                while not valid_stat:
-                    # This will be used in damage calculation later
-                    decide_stat_boost = input("Use special attack/defense boost? (atk/def)")
+        move = self.input_with_chat("Choose your attack move: ").lower()
 
-                    if decide_stat_boost != "atk" and decide_stat_boost != "def":
-                        print("[ERROR] Answer with atk/def only.")
-                        continue
-                    if decide_stat_boost == "atk" and int(state.stat_boosts['special_attack_uses']) == 0:
-                        print("[ERROR] You're out of special attack boosts!")
-                        continue
-                    if decide_stat_boost == "def" and int(state.stat_boosts['special_defense_uses']) == 0:
-                        print("[ERROR] You're out of special defense boosts!")
-                        continue
-                    
-                    valid_stat = True
-            else:
-                decide_stat_boost = "none"
-        
-        # Sending my move to opponent
-        my_move = {
+        attack_msg = {
             "message_type": "ATTACK_ANNOUNCE",
-            "move_name": move_name,
-            "sequence_number": state.next_sequence_number()
+            "move_name": {"move": move, "move_damage": 20},
+            "sequence_number": state.next_sequence_number(),
         }
-        state.record_attack_announce(my_move['move_name'])
-        socket_obj.sendto(parser.encode_message(my_move).encode(), addr)
 
-        # Awaiting opp def announcement
-        data, __ = socket_obj.recvfrom(1024)
-        recvd_msg = parser.decode_message(data.decode())
+        state.record_attack_announce(attack_msg["move_name"])
+        sock.sendto(parser.encode_message(attack_msg).encode(), addr)
+        print("Attack announced.\n")
 
-        if recvd_msg['message_type'] == "DEFENSE_ANNOUNCE":
-            state.receive_defense_announce()
-            
-            confirmed_calcu = False
-            while not confirmed_calcu:
-                
-                
-                
-                #! PROCESSING_TURN
-                # Preparing calculation report
-                
-                damage, effect = calculate_damage(state, decide_stat_boost, your_turn=True)
-                remaining_health = Protocols.subtract_damage(state.opponent_pokemon['hp'], damage)
-                state.opponent_pokemon['hp'] = remaining_health
-                
-                # Status message following calculation confirmation
-                status_message = (f"{state.my_pokemon['name']} used {state.last_attack}! It was {effect}!")
+        # wait for DEFENSE_ANNOUNCE
+        msg, _ = self.recv_non_chat(sock)
+        if msg.get("message_type") != "DEFENSE_ANNOUNCE":
+            print("Unexpected:", msg)
+            return
 
-                # Send calculation report
-                calcu_report = {
-                    "message_type": "CALCULATION_REPORT",
-                    "attacker": state.my_pokemon['name'],
-                    "move_used": my_move['move_name'],
-                    "remaining_health": state.my_pokemon['hp'],
-                    "damage_dealt": damage,    # will change later
-                    "defender_hp_remaining": remaining_health,
-                    "status_message": status_message,
-                    "decide_stat_boost": decide_stat_boost,
-                    "sequence_number": state.next_sequence_number()
-                }
-                socket_obj.sendto(parser.encode_message(calcu_report).encode(), addr)
-                state.send_calculation_confirm()
-                state.record_local_calculation(remaining_health)
+        state.receive_defense_announce()
 
-                # Receive opp calculation report
-                data, __ = socket_obj.recvfrom(1024)
-                recvd_msg = parser.decode_message(data.decode())
-                state.receive_calculation_confirm()
-                state.receive_calculation_report(
-                    int(recvd_msg['defender_hp_remaining']), 
-                    int(recvd_msg['sequence_number'])
-                )
+        # damage
+        remaining = state.opponent_pokemon["hp"] - state.last_attack["move_damage"]
+        state.opponent_pokemon["hp"] = remaining
 
-                # Comparing reports
-                # Similar reports -> switch turns
-                if recvd_msg['message_type'] == "CALCULATION_REPORT" and state.both_confirmed():
+        calc_msg = {
+            "message_type": "CALCULATION_REPORT",
+            "attacker": state.my_pokemon["pokemon"],
+            "move_used": move,
+            "remaining_health": state.my_pokemon["hp"],
+            "damage_dealt": 20,
+            "defender_hp_remaining": remaining,
+            "status_message": f"{move} dealt 20 damage!",
+            "sequence_number": state.next_sequence_number(),
+        }
 
-                    confirmed_msg = {
-                        "message_type": "CALCULATION_CONFIRMATION",
-                        "sequence_number": state.next_sequence_number()
-                    }
-                    socket_obj.sendto(parser.encode_message(confirmed_msg).encode(), addr)
-                    confirmed_calcu = True
+        state.send_calculation_confirm()
+        sock.sendto(parser.encode_message(calc_msg).encode(), addr)
 
-                    # Check if opponent confirmed too
-                    data, __ = socket_obj.recvfrom(1024)
-                    recvd_msg = parser.decode_message(data.decode())
+        # wait opponent calc
+        msg, _ = self.recv_non_chat(sock)
+        state.receive_calculation_confirm()
 
-                    if recvd_msg['message_type'] == "CALCULATION_CONFIRMATION":
-                        
-                        # Update stat boost used
-                        if decide_stat_boost != "none":
-                            state.decrease_stat_boost(decide_stat_boost)
+        # switch turn
+        if state.both_confirmed():
+            confirm = {
+                "message_type": "CALCULATION_CONFIRMATION",
+                "sequence_number": state.next_sequence_number(),
+            }
+            sock.sendto(parser.encode_message(confirm).encode(), addr)
+            state.switch_turn()
 
-                        # Printing status messages
-                        print(status_message)
-                        print(f"{state.opponent_pokemon['name']}: -{damage} hp\n")
-
-                        # Switch turns and exit loop
-                        state.switch_turn()
-                        confirmed_calcu = True
-
-
-
-                        #! GAME_OVER
-                        # Receiving/sending any game over messages
-                        if state.winner == "me":
-                            game_over = {
-                                "message_type": "GAME_OVER",
-                                "winner": state.my_pokemon['name'],
-                                "loser": state.opponent_pokemon['name'], 
-                                "sequence_number": state.next_sequence_number()
-                            }
-                            socket_obj.sendto(parser.encode_message(game_over).encode(), addr)
-                            print(f"{state.opponent_pokemon['name']} has fainted! You win, {state.my_pokemon['name']}!")
-                        elif state.winner == "opponent":
-                            data, __ = socket_obj.recvfrom(1024)
-                            recvd_msg = parser.decode_message(data.decode())
-                            print(f"{state.my_pokemon['name']} has fainted! You win, {state.opponent_pokemon['name']}!")
-
-                            
-                    else:
-                        print(f"Received {recvd_msg['message_type']}!")
-                        print("Recalculating...")
-
-                # Dissimilar turns, recalculate
-                else:
-                    print(f"Calculation reports similar: {confirmed_calcu}")
-                    print("Sending resolution request...")
-                    res_req_msg = {
-                        "message_type": "RESOLUTION_REQUEST",
-                        "attacker": state.my_pokemon['name'],
-                        "move_used": state.last_attack,
-                        "damage_dealt": damage,
-                        "defender_hp_remaining": state.opponent_pokemon['hp'],
-                        "sequence_number": state.next_sequence_number()
-                    }
-                    socket_obj.sendto(parser.encode_message(res_req_msg).encode(), addr)
-
-        
-        # If resolution req, repeat calculation
-        else:
-            print(f"Received message type {recvd_msg}. Recomputing damage...")
-
-
-
-    # PLAYER DEFENDS, OPPONENT ATTACKS
-    def their_turn(self, socket_obj, addr, state: BattleState):
-
-
-        #! WAITING_FOR_MOVE
-
-        # Awaiting opp attack announce
+    # ------------------------------------------------------------------
+    # OPPONENT TURN
+    # ------------------------------------------------------------------
+    def their_turn(self, sock, addr, state: BattleState):
         print(their_turn_divider)
         print("Waiting for opponent's move...\n")
 
-        data, __ = socket_obj.recvfrom(1024)
-        recvd_msg = parser.decode_message(data.decode())
+        msg, _ = self.recv_non_chat(sock)
+        state.receive_attack_announce(msg["move_name"])
 
-        accepted = state.receive_attack_announce(recvd_msg['move_name'])
+        def_msg = {
+            "message_type": "DEFENSE_ANNOUNCE",
+            "sequence_number": state.next_sequence_number()
+        }
+        sock.sendto(parser.encode_message(def_msg).encode(), addr)
+        state.receive_defense_announce()
 
-        if accepted:
+        # opponent calc
+        msg, _ = self.recv_non_chat(sock)
+        state.receive_calculation_confirm()
+        state.receive_calculation_report(
+            msg["defender_hp_remaining"],
+            msg["sequence_number"],
+        )
 
-            # Sending def announcement
-            my_def_msg = parser.encode_message({
-                "message_type": "DEFENSE_ANNOUNCE",
-                "sequence_number": state.next_sequence_number()
-            })
-            socket_obj.sendto(my_def_msg.encode(), addr)
-            state.receive_defense_announce()
-            
-            # Loop til calculations are confirmed
-            confirmed_calcu = False
-            while not confirmed_calcu:
+        # our calc
+        remaining = state.my_pokemon["hp"] - state.last_attack["move_damage"]
+        state.my_pokemon["hp"] = remaining
 
-                #! PROCESSING_TURN
-                # Receiving opp calculation report (compare later)
-                data, __ = socket_obj.recvfrom(1024)
-                recvd_msg = parser.decode_message(data.decode())
-                state.receive_calculation_confirm()
-                state.receive_calculation_report(
-                    int(recvd_msg['defender_hp_remaining']), 
-                    int(recvd_msg['sequence_number'])
-                )
+        calc_msg = {
+            "message_type": "CALCULATION_REPORT",
+            "attacker": state.opponent_pokemon["pokemon"],
+            "move_used": state.last_attack["move"],
+            "remaining_health": state.opponent_pokemon["hp"],
+            "damage_dealt": state.last_attack["move_damage"],
+            "defender_hp_remaining": remaining,
+            "status_message": "Damage processed",
+            "sequence_number": state.next_sequence_number(),
+        }
 
-                damage, effect = calculate_damage(state, recvd_msg['decide_stat_boost'], your_turn=False)
-                remaining_health = Protocols.subtract_damage(state.my_pokemon['hp'], damage)
-                state.my_pokemon['hp'] = remaining_health
+        sock.sendto(parser.encode_message(calc_msg).encode(), addr)
+        state.send_calculation_confirm()
+        state.record_local_calculation(remaining)
 
-                # Status message following calculation confirmation
-                status_message = (f"{state.my_pokemon['name']}'s {state.last_attack} hit {state.opponent_pokemon['name']}! It was {effect}!")
+        # wait confirm
+        msg, _ = self.recv_non_chat(sock)
 
-                # Send calculation report
-                calcu_report = {
-                    "message_type": "CALCULATION_REPORT",
-                    "attacker": state.opponent_pokemon['name'],
-                    "move_used": state.last_attack,
-                    "remaining_health": state.opponent_pokemon['hp'],
-                    "damage_dealt": damage,             
-                    "defender_hp_remaining": remaining_health,
-                    "status_message": status_message,
-                    "sequence_number": state.next_sequence_number()
-                }         
-                socket_obj.sendto(parser.encode_message(calcu_report).encode(), addr)
-                state.send_calculation_confirm()
-                state.record_local_calculation(remaining_health)
-                
-                # Receiving opponent message
-                data, __ = socket_obj.recvfrom(1024)
-                recvd_msg = parser.decode_message(data.decode())
+        if msg.get("message_type") == "CALCULATION_CONFIRMATION":
+            if state.both_confirmed():
+                state.switch_turn()
 
-                # Opponent says reports are similar
-                if recvd_msg['message_type'] == "CALCULATION_CONFIRMATION":
-                    
-                    # I say reports are similar
-                    if state.both_confirmed():
-                        print(f"Calculation reports similar!")
-
-                        confirmed_msg = {
-                            "message_type": "CALCULATION_CONFIRMATION",
-                            "sequence_number": state.next_sequence_number()
-                        }
-                        socket_obj.sendto(parser.encode_message(confirmed_msg).encode(), addr)
-
-                        # Printing status messages
-                        print(status_message)
-                        print(f"{state.my_pokemon['name']}: -{damage} hp\n")
-
-                        # Switch turns and exit loop
-                        state.switch_turn()
-                        confirmed_calcu = True
-
-
-
-                        #! GAME_OVER
-                        # Receiving/sending any game over messages
-                        if state.winner == "me":
-                            game_over = {
-                                "message_type": "GAME_OVER",
-                                "winner": state.my_pokemon['name'],
-                                "loser": state.opponent_pokemon['name'], 
-                                "sequence_number": state.next_sequence_number()
-                            }
-                            socket_obj.sendto(parser.encode_message(game_over).encode(), addr)
-                            print(f"{state.opponent_pokemon['name']} has fainted! You win, {state.my_pokemon['name']}!")
-                        elif state.winner == "opponent":
-                            data, __ = socket_obj.recvfrom(1024)
-                            recvd_msg = parser.decode_message(data.decode())
-                            print(f"{state.my_pokemon['name']} has fainted! You win, {state.opponent_pokemon['name']}!")
-
-                    # I say reports are not similar
-                    else:
-                        print(f"Calculation reports similar: {confirmed_calcu}")
-                        print("Sending resolution request...")
-                        res_req_msg = {
-                            "message_type": "RESOLUTION_REQUEST",
-                            "attacker": state.my_pokemon['name'],
-                            "move_used": state.last_attack,
-                            "damage_dealt": damage,
-                            "defender_hp_remaining": state.opponent_pokemon['hp'],
-                            "sequence_number": state.next_sequence_number()
-                        }
-                        socket_obj.sendto(parser.encode_message(res_req_msg).encode(), addr)
-                else:
-                    print(f"Calculation reports dissimilar.")
-                    print("Sending resolution request...")
-
-        
-        else:
-            print(f"Unexpected message received:\n{recvd_msg}")
-
-
-
-    # Modified start_game to call the two functions
-    def start_game(self, socket_obj, addr, state: BattleState):
-
+    # ------------------------------------------------------------------
+    # GAME LOOP
+    # ------------------------------------------------------------------
+    def start_game(self, sock, addr, state: BattleState):
         while not state.check_game_over():
             if state.my_turn:
-                self.your_turn(socket_obj, addr, state)
+                self.your_turn(sock, addr, state)
             else:
-                self.their_turn(socket_obj, addr, state)
+                self.their_turn(sock, addr, state)
 
-        # will add gameover things later
-        print("\n\n\n ==== Game Over ====\n\n\n")
+        print("\n\n===== GAME OVER =====\n\n")

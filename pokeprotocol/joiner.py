@@ -1,80 +1,183 @@
+# pokeprotocol/joiner.py
+
 from networking.message_parser import MessageParser
 from game.battle_state import BattleState
 from pokeprotocol.protocols import Protocols
+from chat.chat_handler import ChatHandler
+from networking.udp import ReliableUDP
+
 import socket
 
-
-
-# GLOBAL VARIABLES AND CONSTANTS
-HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
-PORT = 65432        # Port to listen on (non-privileged ports are > 1023)
+HOST = "127.0.0.1"
+PORT = 65432
+BUFFER_SIZE = 65535
 
 parser = MessageParser()
 protocols = Protocols()
 
-divider = "========================================\n"
-top_divider = "================== JOINER ================\n"
 init_divider = "=============== INITIALIZATION ===========\n"
 battle_setup_divider = "=============== BATTLE SETUP ===========\n"
-your_turn_divider = "================== YOUR TURN ==============\n"
-their_turn_divider = "================== OPPONENT'S TURN =======\n"
 
 
-# Initialize joiner
+def send_ack(sock: socket.socket, addr, seq: int):
+    ack = {
+        "message_type": "ACK",
+        "sequence_number": seq,
+    }
+    sock.sendto(parser.encode_message(ack).encode("utf-8"), addr)
+
+
+def handle_incoming_with_chat(
+    sock: socket.socket,
+    addr,
+    msg: dict,
+    chat_handler: ChatHandler,
+):
+    """
+    For joiner: handle ACK and CHAT_MESSAGE, forward others to caller.
+    Returns:
+        - None if handled here (chat/ACK)
+        - msg dict if it is a non-chat, non-ACK message
+    """
+    mtype = msg.get("message_type")
+
+    if mtype == "ACK":
+        # ACK is meant for other side's ReliableUDP; ignore here.
+        return None
+
+    if mtype == "CHAT_MESSAGE":
+        seq = msg.get("sequence_number")
+        if seq is not None:
+            send_ack(sock, addr, seq)
+        if chat_handler is not None:
+            chat_handler.handle_incoming(msg)
+        else:
+            sender = msg.get("sender_name", "Unknown")
+            text = msg.get("message_text", "")
+            print(f"[CHAT] {sender}: {text}")
+        return None
+
+    return msg
+
+
 def init():
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        
-        # Joiner connects to host
-        print(init_divider)
+        print("\n" + init_divider)
+        print(f"/Users/romaaguila/Desktop/csnetwk-mp-main\n")
         print(f"[JOINER] Connected to host at {HOST}:{PORT}")
-        print(f"[JOINER] Sending handshake request...\n")
 
-        # Sending handshake request to host
-        joiner_response = parser.encode_message({"message_type": "HANDSHAKE_REQUEST"})
-        s.sendto(joiner_response.encode(), (HOST, PORT))
+        # IMPORTANT: we DO NOT call s.connect() here
+        # so we can safely use sendto() with (HOST, PORT) and recvfrom().
 
+        reliable = ReliableUDP(
+            socket_obj=s,
+            parser=parser,
+            timeout=0.5,
+            max_retries=3,
+            loss_prob=0.0,
+            verbose=True,
+        )
+
+        chat_handler = ChatHandler(
+            socket_obj=s,
+            my_name="JOINER",
+            peer_addr=(HOST, PORT),
+            reliable=reliable,
+            verbose=True,
+        )
+        protocols.attach_chat_handler(chat_handler)
+
+        print("[JOINER] Sending handshake request...\n")
+        handshake_req = {
+            "message_type": "HANDSHAKE_REQUEST",
+        }
+        s.sendto(
+            parser.encode_message(handshake_req).encode("utf-8"),
+            (HOST, PORT),
+        )
+
+        # === WAIT FOR HANDSHAKE_RESPONSE ===
         while True:
-            data, addr = s.recvfrom(1024)
-            host_msg = parser.decode_message(data.decode())
-            message_type = host_msg.get("message_type")
+            data, addr = s.recvfrom(BUFFER_SIZE)
+            msg = parser.decode_message(data.decode("utf-8"))
 
-            # Host handshake response handling
-            if message_type == "HANDSHAKE_RESPONSE":
-                seed = host_msg['seed']
-                print(f"[JOINER] Host message received:\n{host_msg}\n")
-                print("[JOINER] Handshake with host complete!\n\n")
+            handled = handle_incoming_with_chat(s, addr, msg, chat_handler)
+            if handled is None:
+                continue
 
-                # Battle setup initiation from host
-                print(battle_setup_divider)
-                
-                print("Initializing battle setup...")
-                print("Awaiting host battle setup data...\n")
+            if handled.get("message_type") != "HANDSHAKE_RESPONSE":
+                print(
+                    f"[JOINER] Unexpected message type while waiting for handshake: "
+                    f"{handled.get('message_type')}"
+                )
+                continue
 
-            elif message_type == "BATTLE_SETUP":
+            seed = handled["seed"]
+            print("[JOINER] Host message received:")
+            print(handled)
+            print("\n[JOINER] Handshake with host complete!\n")
+            break
 
-                # Sending host battle setup data
-                battle_data = protocols.joiner_battle_setup()
-                host_response = parser.encode_message({
-                    "message_type": "BATTLE_SETUP",
-                    "battle_data": battle_data
-                }) 
-                s.sendto(host_response.encode(), addr)
-                print("\nBattle setup data sent to Host. Battle initialization complete!\n\n")
+        # === BATTLE SETUP ===
+        print(battle_setup_divider)
+        print("Initializing battle setup...")
+        print("Awaiting host battle setup data...\n")
 
-                # Initialize battle state
-                battle_state = BattleState(is_host=False, seed=seed, verbose=True)
-                host_raw_battle_data = host_msg['battle_data']
-                opp_battle_data = host_raw_battle_data['pokemon']
-                battle_state.set_pokemon_data(battle_data['pokemon'], opp_battle_data, battle_data['stat_boosts'])
-                print('\n')
+        host_battle_data = None
 
-                # Start game
-                protocols.start_game(s, addr, battle_state)
+        # Wait for host's BATTLE_SETUP (while still handling chat)
+        while True:
+            data, addr = s.recvfrom(BUFFER_SIZE)
+            msg = parser.decode_message(data.decode("utf-8"))
 
-            else:
-                print(f"[JOINER] Unexpected message type: {message_type}")
+            handled = handle_incoming_with_chat(s, addr, msg, chat_handler)
+            if handled is None:
+                continue
+
+            if handled.get("message_type") != "BATTLE_SETUP":
+                print(
+                    f"[JOINER] Unexpected message type while waiting for host setup: "
+                    f"{handled.get('message_type')}"
+                )
+                continue
+
+            print("[JOINER] Host battle setup data received:")
+            print(handled)
+            host_battle_data = handled["battle_data"]
+            break
+
+        print("\nHost setup received. Now choose your Pokémon.\n")
+
+        # Joiner chooses Pokémon (this should use input_with_chat internally)
+        joiner_battle_data = protocols.joiner_battle_setup()
+
+        # Send our setup back to host
+        joiner_setup_msg = {
+            "message_type": "BATTLE_SETUP",
+            "battle_data": joiner_battle_data,
+        }
+        s.sendto(
+            parser.encode_message(joiner_setup_msg).encode("utf-8"),
+            (HOST, PORT),
+        )
+        print("Battle setup data sent to Host.")
+        print("Battle initialization complete!\n")
+
+        # === Initialize BattleState ===
+        battle_state = BattleState(is_host=False, seed=seed, verbose=True)
+        my_poke_data = joiner_battle_data["pokemon_name"]
+        opp_poke_data = host_battle_data["pokemon_name"]
+        battle_state.set_pokemon_data(my_poke_data, opp_poke_data)
+
+        print(
+            f"[DBUG:JOINER] Pokemon data set: "
+            f"Mine HP: {battle_state.my_pokemon['hp']} "
+            f"Opponent HP: {battle_state.opponent_pokemon['hp']}\n"
+        )
+
+        # === GAME LOOP ===
+        protocols.start_game(s, (HOST, PORT), battle_state)
 
 
-
-# MAIN
-init()
+if __name__ == "__main__":
+    init()

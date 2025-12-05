@@ -1,150 +1,101 @@
 # networking/udp.py
-"""
-UDP helper + reliability layer.
 
-Covers:
-- Sequence numbers
-- ACK messages
-- Retransmission with timeout + retry count
-- Optional simulated packet loss
-- Duplicate detection helper
-"""
-
+import random
 import socket
 import time
-import random
-from typing import Tuple, Dict, Set
-
-from networking.message_parser import MessageParser
+from typing import Dict, Any
 
 
 class ReliableUDP:
+    """
+    A very simple reliability wrapper on top of UDP.
+
+    - Adds a "sequence_number" field to outgoing messages.
+    - Retries sending the same datagram up to max_retries.
+    - Waits for a JSON-encoded ACK:
+        { "message_type": "ACK", "sequence_number": <seq> }
+
+    NOTE: This class does NOT automatically send ACKs.
+    Your application code (host/joiner/spectator/protocols) must:
+        - Look for incoming messages with a "sequence_number".
+        - For non-ACK messages, send back an ACK using the same seq.
+    """
+
     def __init__(
         self,
-        sock: socket.socket,
+        socket_obj: socket.socket,
+        parser,
         timeout: float = 0.5,
         max_retries: int = 3,
+        loss_prob: float = 0.0,
         verbose: bool = False,
-        loss_prob: float = 0.0,  # 0.0 = no simulated loss
-    ) -> None:
-        self.sock = sock
+    ):
+        self.sock = socket_obj
+        self.parser = parser
         self.timeout = timeout
         self.max_retries = max_retries
-        self.verbose = verbose
-        self.parser = MessageParser()
         self.loss_prob = loss_prob
-
-        self._next_seq = 1  # internal sequence counter
-        self._seen_sequences: Set[int] = set()  # for duplicate handling
-
-    # --- logging ---
+        self.verbose = verbose
+        self._next_seq = 0
 
     def log(self, *args):
         if self.verbose:
             print("[ReliableUDP]", *args)
 
-    # --- sequence helper ---
-
-    def next_sequence(self) -> int:
-        seq = self._next_seq
+    def next_sequence_number(self) -> int:
         self._next_seq += 1
-        self.log("Next sequence number:", seq)
-        return seq
+        self.log("Next sequence number:", self._next_seq)
+        return self._next_seq
 
-    # --- ACK helpers ---
-
-    def _is_ack_for(self, msg: dict, seq_no: int) -> bool:
-        return (
-            msg.get("message_type") == "ACK"
-            and str(msg.get("ack_number")) == str(seq_no)
-        )
-
-    def send_ack(self, addr: Tuple[str, int], seq_no: int) -> None:
-        """Send a simple ACK for a given sequence number (fire-and-forget)."""
-        ack_msg = {
-            "message_type": "ACK",
-            "ack_number": seq_no,
-        }
-        raw = self.parser.encode_message(ack_msg)
-
-        # Optional simulated loss
-        if self.loss_prob > 0 and random.random() < self.loss_prob:
-            self.log(f"[LOSS] Simulating lost ACK for seq={seq_no}")
-            return
-
-        self.sock.sendto(raw.encode(), addr)
-        self.log("Sent ACK for", seq_no, "to", addr)
-
-    # --- duplicate detection helper ---
-
-    def is_duplicate(self, msg: dict) -> bool:
-        """
-        Returns True if we've already seen this sequence_number before.
-        Use this in host/joiner to ignore repeated packets.
-        """
-        try:
-            seq = int(msg.get("sequence_number"))
-        except (TypeError, ValueError):
-            return False  # no valid seq number, can't judge
-
-        if seq in self._seen_sequences:
-            self.log("Duplicate received for seq", seq)
-            return True
-
-        self._seen_sequences.add(seq)
-        return False
-
-    # --- main reliable send ---
-
-    def send_reliable(self, data: dict, addr: Tuple[str, int]) -> bool:
-        """
-        Send a message and wait for an ACK.
-
-        REQUIREMENT: data must contain 'sequence_number'.
-        Returns True if ACK received, False if retries exhausted.
-        """
-        if "sequence_number" not in data:
-            # If user forgot, assign one automatically
-            data["sequence_number"] = self.next_sequence()
-
-        seq_no = data["sequence_number"]
-        raw = self.parser.encode_message(data)
-
-        old_timeout = self.sock.gettimeout()
-        self.sock.settimeout(self.timeout)
-
-        try:
-            for attempt in range(1, self.max_retries + 1):
-                # Simulated loss: pretend to send but drop some packets
-                if self.loss_prob > 0 and random.random() < self.loss_prob:
-                    self.log(
-                        f"[LOSS] Simulating lost send for seq={seq_no}, attempt={attempt}"
-                    )
-                else:
-                    self.log(f"Sending seq={seq_no}, attempt={attempt}")
-                    self.sock.sendto(raw.encode(), addr)
-
-                try:
-                    while True:
-                        packet, from_addr = self.sock.recvfrom(4096)
-                        msg = self.parser.decode_message(packet.decode())
-
-                        # If it's an ACK for us, done!
-                        if self._is_ack_for(msg, seq_no):
-                            self.log(f"ACK received for seq={seq_no}")
-                            return True
-
-                        # If it's some other message, main app should handle it.
-                        # Here we just log it for debug.
-                        self.log("Received non-ACK while waiting:", msg)
-
-                except socket.timeout:
-                    # Timeout → retransmit
-                    self.log("Timeout waiting for ACK for seq", seq_no)
-                    continue
-
-            self.log(f"Giving up on seq={seq_no} after {self.max_retries} retries.")
+    def _is_ack_for(self, msg_dict: Dict[str, Any], seq: int) -> bool:
+        if msg_dict.get("message_type") != "ACK":
             return False
+        return int(msg_dict.get("sequence_number", -1)) == seq
 
-        finally:
-            self.sock.settimeout(old_timeout)
+    def send_reliable(self, message_dict: Dict[str, Any], addr) -> bool:
+        """
+        Encode message_dict as JSON, add sequence_number, send, and wait for ACK.
+
+        Returns True if ACK is received, False otherwise.
+        """
+        seq = self.next_sequence_number()
+        message_dict = dict(message_dict)  # copy so we don't mutate caller's dict
+        message_dict["sequence_number"] = seq
+
+        payload = self.parser.encode_message(message_dict).encode("utf-8")
+
+        attempt = 0
+        while attempt < self.max_retries:
+            attempt += 1
+
+            # artificial loss for testing, if desired
+            if random.random() < self.loss_prob:
+                self.log(f"(Simulated drop) seq={seq}, attempt={attempt}")
+            else:
+                self.log(f"Sending seq={seq}, attempt={attempt}")
+                self.sock.sendto(payload, addr)
+
+            # wait for ack
+            self.sock.settimeout(self.timeout)
+            try:
+                data, _ = self.sock.recvfrom(65535)
+            except socket.timeout:
+                self.log(f"Timeout waiting for ACK for seq {seq}")
+                continue  # retry
+            finally:
+                self.sock.settimeout(None)
+
+            try:
+                msg = self.parser.decode_message(data.decode("utf-8"))
+            except Exception as e:
+                self.log("Failed to decode potential ACK:", e)
+                continue
+
+            if self._is_ack_for(msg, seq):
+                self.log(f"Received ACK for seq={seq}")
+                return True
+            else:
+                self.log("Received non-ACK or wrong seq while waiting for ACK:", msg)
+
+        self.log(f"Giving up on seq={seq} after {self.max_retries} retries.")
+        return False
