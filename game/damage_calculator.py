@@ -57,12 +57,6 @@ def calculate_damage(state: BattleState, stat_confirm, your_turn):
     variance = state.rng.uniform(0.85, 1.0)
     final_damage = max(1, int(damage * variance))
 
-    # Decrease chosen stat boost frrom battle state
-    if stat_confirm == "atk":
-        state.decrease_stat_boost("atk")
-    elif stat_confirm == "def":
-        state.decrease_stat_boost("def")
-    
     #DEBUG
     print(f"[DEBUG]Final damage: {final_damage}")
 

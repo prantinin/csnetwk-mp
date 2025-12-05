@@ -187,6 +187,12 @@ class Protocols:
                     if decide_stat_boost != "atk" and decide_stat_boost != "def":
                         print("Answer with atk/def only.")
                         continue
+                    if decide_stat_boost == "atk" and int(state.stat_boosts['special_attack_uses']) == 0:
+                        print("You're out of special attack boosts!")
+                        continue
+                    if decide_stat_boost == "def" and int(state.stat_boosts['special_defense_uses']) == 0:
+                        print("You're out of special defense boosts!")
+                        continue
                     
                     valid_stat = True
             else:
@@ -301,6 +307,10 @@ class Protocols:
 
                     if recvd_msg['message_type'] == "CALCULATION_CONFIRMATION":
                         print("Opponent has same calcu!")
+                        
+                        # Update stat boost used
+                        if decide_stat_boost != "none":
+                            state.decrease_stat_boost(decide_stat_boost)
 
                         # Printing status messages
                         print(status_message)
