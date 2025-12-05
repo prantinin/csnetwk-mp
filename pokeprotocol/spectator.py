@@ -1,4 +1,7 @@
 from networking.message_parser import MessageParser
+from networking.udp import ReliableUDP
+from pokeprotocol.protocols import Protocols
+
 import socket
 
 # GLOBAL VARIABLES AND CONSTANTS
@@ -6,8 +9,11 @@ HOST = "127.0.0.1"  # Host IP address
 PORT = 65432        # Port used by host
 
 divider = "=====================================\n\n"
-parser = MessageParser()
 
+parser = MessageParser()
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+reliable = ReliableUDP(sock, verbose=True)
+protocols = Protocols(reliable)
 
 # will fix spectator once host/joiner are done:D
 # FUNCTIONS

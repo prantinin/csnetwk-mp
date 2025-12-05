@@ -7,17 +7,18 @@ from chat.chat_handler import ChatHandler
 from networking.message_parser import MessageParser
 from game.battle_state import BattleState
 from game.pokemon_stats import load_pokemon_stats, get_by_name
-
-parser = MessageParser()
+from networking.udp import ReliableUDP
 
 your_turn_divider = "================== YOUR TURN ==============\n"
 their_turn_divider = "================== OPPONENT'S TURN =======\n"
 
 
 class Protocols:
-    def __init__(self):
+    def __init__(self, reliable: ReliableUDP):
         self.pokemon_stats = load_pokemon_stats("game/pokemon.csv")
         self.chat_handler: Optional[ChatHandler] = None
+        self.reliable = reliable
+        self.parser = MessageParser()
 
     # ------------------------------------------------------------------
     # CHAT-HANDLER ATTACH
@@ -88,7 +89,7 @@ class Protocols:
         """Filter CHAT_MESSAGE from battle logic."""
         while True:
             data, addr = sock.recvfrom(bufsize)
-            msg = parser.decode_message(data.decode())
+            msg = self.parser.decode_message(data.decode())
 
             if msg.get("message_type") == "CHAT_MESSAGE":
                 if self.chat_handler:
@@ -167,11 +168,17 @@ class Protocols:
         }
 
         state.record_attack_announce(attack_msg["move_name"])
-        sock.sendto(parser.encode_message(attack_msg).encode(), addr)
+        self.reliable.send_reliable(attack_msg, addr)
         print("Attack announced.\n")
 
         # wait for DEFENSE_ANNOUNCE
-        msg, _ = self.recv_non_chat(sock)
+        while True:
+            msg, _ = self.recv_non_chat(sock)
+            if "sequence_number" in msg:
+                if self.reliable.is_duplicate(msg):
+                    continue
+                self.reliable.send_ack(addr, msg["sequence_number"])
+            break
         if msg.get("message_type") != "DEFENSE_ANNOUNCE":
             print("Unexpected:", msg)
             return
@@ -194,10 +201,16 @@ class Protocols:
         }
 
         state.send_calculation_confirm()
-        sock.sendto(parser.encode_message(calc_msg).encode(), addr)
+        self.reliable.send_reliable(calc_msg, addr)
 
         # wait opponent calc
-        msg, _ = self.recv_non_chat(sock)
+        while True:
+            msg, _ = self.recv_non_chat(sock)
+            if "sequence_number" in msg:
+                if self.reliable.is_duplicate(msg):
+                    continue
+                self.reliable.send_ack(addr, msg["sequence_number"])
+            break
         state.receive_calculation_confirm()
 
         # switch turn
@@ -206,7 +219,7 @@ class Protocols:
                 "message_type": "CALCULATION_CONFIRMATION",
                 "sequence_number": state.next_sequence_number(),
             }
-            sock.sendto(parser.encode_message(confirm).encode(), addr)
+            self.reliable.send_reliable(confirm, addr)
             state.switch_turn()
 
     # ------------------------------------------------------------------
@@ -216,18 +229,30 @@ class Protocols:
         print(their_turn_divider)
         print("Waiting for opponent's move...\n")
 
-        msg, _ = self.recv_non_chat(sock)
+        while True:
+            msg, _ = self.recv_non_chat(sock)
+            if "sequence_number" in msg:
+                if self.reliable.is_duplicate(msg):
+                    continue
+                self.reliable.send_ack(addr, msg["sequence_number"])
+            break
         state.receive_attack_announce(msg["move_name"])
 
         def_msg = {
             "message_type": "DEFENSE_ANNOUNCE",
             "sequence_number": state.next_sequence_number()
         }
-        sock.sendto(parser.encode_message(def_msg).encode(), addr)
+        self.reliable.send_reliable(def_msg, addr)
         state.receive_defense_announce()
 
         # opponent calc
-        msg, _ = self.recv_non_chat(sock)
+        while True:
+            msg, _ = self.recv_non_chat(sock)
+            if "sequence_number" in msg:
+                if self.reliable.is_duplicate(msg):
+                    continue
+                self.reliable.send_ack(addr, msg["sequence_number"])
+            break
         state.receive_calculation_confirm()
         state.receive_calculation_report(
             msg["defender_hp_remaining"],
@@ -249,12 +274,18 @@ class Protocols:
             "sequence_number": state.next_sequence_number(),
         }
 
-        sock.sendto(parser.encode_message(calc_msg).encode(), addr)
+        self.reliable.send_reliable(calc_msg, addr)
         state.send_calculation_confirm()
         state.record_local_calculation(remaining)
 
         # wait confirm
-        msg, _ = self.recv_non_chat(sock)
+        while True:
+            msg, _ = self.recv_non_chat(sock)
+            if "sequence_number" in msg:
+                if self.reliable.is_duplicate(msg):
+                    continue
+                self.reliable.send_ack(addr, msg["sequence_number"])
+            break
 
         if msg.get("message_type") == "CALCULATION_CONFIRMATION":
             if state.both_confirmed():

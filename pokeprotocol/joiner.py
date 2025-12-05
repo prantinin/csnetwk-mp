@@ -13,7 +13,9 @@ PORT = 65432
 BUFFER_SIZE = 65535
 
 parser = MessageParser()
-protocols = Protocols()
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+reliable = ReliableUDP(sock, verbose=True)
+protocols = Protocols(reliable)
 
 init_divider = "=============== INITIALIZATION ===========\n"
 battle_setup_divider = "=============== BATTLE SETUP ===========\n"
@@ -68,15 +70,6 @@ def init():
 
         # IMPORTANT: we DO NOT call s.connect() here
         # so we can safely use sendto() with (HOST, PORT) and recvfrom().
-
-        reliable = ReliableUDP(
-            socket_obj=s,
-            parser=parser,
-            timeout=0.5,
-            max_retries=3,
-            loss_prob=0.0,
-            verbose=True,
-        )
 
         chat_handler = ChatHandler(
             socket_obj=s,
