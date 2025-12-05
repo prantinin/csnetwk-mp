@@ -150,7 +150,7 @@ class BattleState:
     def both_confirmed(self) -> bool:
         if self.is_game_over():
             return True # already game over so no need to switch
-        if self.local_confirm_sent and self.opponent_confirm_received:
+        if self.local_calculation['hp'] == self.opponent_calculation['hp']:
             self.log("Both players confirmed calculations.")
             return True
         return False

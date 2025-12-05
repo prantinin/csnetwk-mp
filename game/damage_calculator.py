@@ -27,16 +27,22 @@ def calculate_damage(state: BattleState, stat_confirm, your_turn):
     if stat_confirm == "atk":
         atk_stat = attacker['sp_attack']
         def_stat = defender['defense']
+        #DEBUG
+        print(f"Special attack: atk={atk_stat}, def={def_stat}")
 
     # Refer to pokemon's special defense boost
     elif stat_confirm == "def":
         atk_stat = attacker['attack']
         def_stat = defender['sp_defense']
+        #DEBUG
+        print(f"Special defense: atk={atk_stat}, def={def_stat}")
     
     # Pokemons' normal stats
     else:
         atk_stat = attacker['attack']
         def_stat = defender['defense']
+        #DEBUG
+        print(f"Normal: atk={atk_stat}, def={def_stat}")
     
     #DEBUG 
     print(f"[DEBUG] Attacker stat: {atk_stat}\nDefender stat: {def_stat}")

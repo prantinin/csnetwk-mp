@@ -268,8 +268,9 @@ class Protocols:
                 #DEBUG
                 print(f"Check other: {state.my_pokemon['hp']}")
                 
-                state.send_calculation_confirm()
                 socket_obj.sendto(parser.encode_message(calcu_report).encode(), addr)
+                state.send_calculation_confirm()
+                state.record_local_calculation(remaining_health)
                 print("Calculation report sent! Waiting for opponent report...\n")
 
                 #DEBUG
@@ -279,6 +280,10 @@ class Protocols:
                 data, __ = socket_obj.recvfrom(1024)
                 recvd_msg = parser.decode_message(data.decode())
                 state.receive_calculation_confirm()
+                state.receive_calculation_report(
+                    int(recvd_msg['defender_hp_remaining']), 
+                    int(recvd_msg['sequence_number'])
+                )
                 print(f"Check other: {state.my_pokemon['hp']}")
                 print("Opponent report received! Comparing reports...")
                 print(recvd_msg)
@@ -287,6 +292,9 @@ class Protocols:
                 # Comparing reports
                 if recvd_msg['message_type'] == "CALCULATION_REPORT":
                     
+                    #DEBUG
+                    print(state.check_battle_state())
+
                     # Similar reports -> switch turns
                     if state.both_confirmed():
                         print(f"Calculation reports similar!")
@@ -316,7 +324,9 @@ class Protocols:
                         print(status_message)
                         print(f"{state.opponent_pokemon['name']}: -{damage} hp")
 
+                        # Switch turns and exit loop
                         state.switch_turn()
+                        confirmed_calcu = True
 
                         #DEBUG
                         print(state.check_battle_state())
@@ -466,6 +476,9 @@ class Protocols:
                 # Opponent says reports are similar
                 if recvd_msg['message_type'] == "CALCULATION_CONFIRMATION":
                     
+                    #DEBUG
+                    print(state.check_battle_state())
+
                     # I say reports are similar
                     if state.both_confirmed():
                         print(f"Calculation reports similar!")
@@ -483,6 +496,7 @@ class Protocols:
                         print(status_message)
                         print(f"{state.my_pokemon['name']}: -{damage} hp")
 
+                        # Switch turns and exit loop
                         state.switch_turn()
                         confirmed_calcu = True
 
